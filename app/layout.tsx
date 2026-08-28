@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Caveat:wght@500;600&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap"
           rel="stylesheet"
         />
-        <meta name="theme-color" content="#0F2E3D" />
+        <meta name="theme-color" content="#FFFFFF" />
         {/* Scroll reveals are progressive enhancement — without JS the content must still be visible. */}
         <noscript>
           <style>{`.reveal{opacity:1 !important;transform:none !important}`}</style>

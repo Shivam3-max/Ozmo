@@ -186,8 +186,8 @@ function PressThrough() {
       body: <PortraitCard />,
     },
     {
-      cls: "right-[7%] top-[30%] w-[244px] hidden md:block",
-      delay: "5.2s",
+      cls: "bottom-[5%] left-1/2 w-[266px] -translate-x-1/2 md:bottom-auto md:left-auto md:right-[7%] md:top-[30%] md:w-[244px] md:translate-x-0",
+      delay: "1.2s",
       body: (
         <>
           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--ink-3)]">
@@ -248,13 +248,13 @@ function PressThrough() {
   return (
     <>
       {items.map((it) => (
-        <div
-          key={it.delay}
-          className={`hero-press rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-4 shadow-[0_14px_38px_rgba(15,46,61,0.14)] ${it.cls}`}
-          style={{ animationDelay: it.delay }}
-          aria-hidden
-        >
-          {it.body}
+        <div key={it.delay} className={`hero-press-slot ${it.cls}`} aria-hidden>
+          <div
+            className="hero-press rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-4 shadow-[0_14px_38px_rgba(15,46,61,0.14)]"
+            style={{ animationDelay: it.delay }}
+          >
+            {it.body}
+          </div>
         </div>
       ))}
     </>
@@ -307,7 +307,7 @@ export default function HeroFrosted() {
         deleting = false;
         word += 1;
       }
-      timer.current = setTimeout(tick, char === 0 ? 260 : DELETE_MS);
+      timer.current = setTimeout(tick, char === 0 ? 130 : DELETE_MS);
     };
 
     timer.current = setTimeout(tick, 700);
@@ -325,7 +325,7 @@ export default function HeroFrosted() {
       <div className="hero-scrim" aria-hidden />
       <PressThrough />
 
-      <div className="relative z-30 mx-auto w-full max-w-[900px] px-6 py-20 text-center">
+      <div className="relative z-30 mx-auto w-full max-w-[900px] px-6 pb-56 pt-20 text-center md:pb-20">
         {/* real text for crawlers and screen readers; the animation is decorative */}
         <h1 className="sr-only">
           Ozmo Diet Clinic — personalised nutrition built for weight loss, diabetes, PCOS, thyroid

@@ -15,6 +15,10 @@
 }
 
 :root {
+  /* The public site is deliberately light-only — the client specified a white
+     base. Dark mode returns for /portal, where people log meals at 10pm. */
+  color-scheme: light;
+
   --ground: #FFFFFF;
   --paper: #FFFFFF;
   --tint: #F4F8F9;
@@ -32,44 +36,6 @@
   --grid-line: rgba(15, 46, 61, 0.055);
   --wash-a: rgba(247, 209, 23, 0.16);
   --wash-b: rgba(15, 46, 61, 0.07);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --ground: #08202C;
-    --paper: #0F2E3D;
-    --tint: #0C2734;
-    --ink: #E8F0F3;
-    --ink-2: #9DB4BE;
-    --ink-3: #7A939F;
-    --line: #21495C;
-    --line-soft: #17394A;
-    --accent-text: #F7D117;
-    --good: #3CB08A;
-    --watch: #DDA349;
-    --alert: #DF8474;
-    --grid-line: rgba(232, 240, 243, 0.05);
-    --wash-a: rgba(247, 209, 23, 0.11);
-    --wash-b: rgba(79, 199, 154, 0.07);
-  }
-}
-
-:root[data-theme="dark"] {
-  --ground: #08202C;
-  --paper: #0F2E3D;
-  --tint: #0C2734;
-  --ink: #E8F0F3;
-  --ink-2: #9DB4BE;
-  --ink-3: #7A939F;
-  --line: #21495C;
-  --line-soft: #17394A;
-  --accent-text: #F7D117;
-  --good: #3CB08A;
-  --watch: #DDA349;
-  --alert: #DF8474;
-  --grid-line: rgba(232, 240, 243, 0.05);
-  --wash-a: rgba(247, 209, 23, 0.11);
-  --wash-b: rgba(79, 199, 154, 0.07);
 }
 
 @layer base {
@@ -105,7 +71,6 @@
     outline-offset: 3px;
     border-radius: 6px;
   }
-  :root[data-theme="dark"] :focus-visible { outline-color: var(--accent); }
 
   ::selection { background: #F7D117; color: #0F2E3D; }
 }
@@ -224,9 +189,9 @@
   }
 
   /* cards that press through the glass and come fully sharp for a beat */
+  .hero-press-slot { position: absolute; z-index: 20; }
+
   .hero-press {
-    position: absolute;
-    z-index: 20;
     opacity: 0;
     animation: hero-press 26s ease-in-out infinite;
     will-change: opacity, transform;
@@ -249,16 +214,6 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .hero-frost { background: rgba(8, 32, 44, 0.42); }
-  :root:not([data-theme="light"]) .hero-scrim {
-    background: radial-gradient(ellipse 27% 21% at 50% 45%, rgba(8,32,44,0.92) 0%, rgba(8,32,44,0.66) 52%, rgba(8,32,44,0) 100%);
-  }
-}
-:root[data-theme="dark"] .hero-frost { background: rgba(8, 32, 44, 0.42); }
-:root[data-theme="dark"] .hero-scrim {
-  background: radial-gradient(ellipse 27% 21% at 50% 45%, rgba(8,32,44,0.92) 0%, rgba(8,32,44,0.66) 52%, rgba(8,32,44,0) 100%);
-}
 
 @keyframes hero-drift {
   0%   { transform: translate3d(-20px, -12px, 0) scale(1.02); }
