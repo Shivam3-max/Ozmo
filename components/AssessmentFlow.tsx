@@ -1,20 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import {
-  questions,
-  steps,
-  mealSlots,
-  type Answers,
-  computeBmi,
-  bmiBand,
-  buildCards,
-  buildFocus,
-  recommendProgram,
-  requiresMedicalCaution,
-} from "@/lib/assessment";
+import { questions, steps, mealSlots, type Answers } from "@/lib/assessment";
 
 const STORAGE = "ozmo.assessment.v1";
 
@@ -26,21 +15,6 @@ const goalFromParam: Record<string, string> = {
   wellness: "Feel better overall",
 };
 
-function Rich({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.startsWith("**") && p.endsWith("**") ? (
-          <strong key={i} className="font-semibold text-[var(--ink)]">{p.slice(2, -2)}</strong>
-        ) : (
-          <span key={i}>{p}</span>
-        )
-      )}
-    </>
-  );
-}
-
 export default function AssessmentFlow() {
   const params = useSearchParams();
   const [started, setStarted] = useState(false);
@@ -48,8 +22,10 @@ export default function AssessmentFlow() {
   const [answers, setAnswers] = useState<Answers>({});
   const [done, setDone] = useState(false);
   const [contact, setContact] = useState({ email: "", phone: "", city: "", consent: false, marketing: false });
-  const [showSnapshot, setShowSnapshot] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const router = useRouter();
 
   // restore
   useEffect(() => {
@@ -141,140 +117,6 @@ export default function AssessmentFlow() {
     );
   }
 
-  /* ---------- snapshot ---------- */
-  if (showSnapshot) {
-    const bmi = computeBmi(answers);
-    const cards = buildCards(answers);
-    const focus = buildFocus(answers);
-    const rec = recommendProgram(answers);
-    const caution = requiresMedicalCaution(answers);
-    const name = (answers.name as string) || "there";
-
-    return (
-      <div className="relative mx-auto w-full max-w-[940px] px-6 py-16 md:py-24">
-        <p className="eyebrow">Your Ozmo Health Snapshot</p>
-        <h1 className="mt-5 text-[clamp(36px,5.4vw,58px)] leading-[0.99]">Prepared for {name}</h1>
-        <p className="mt-2 text-[14.5px] text-[var(--ink-3)]">
-          {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
-        </p>
-
-        <div className="mt-8 rounded-2xl border border-[var(--line)] bg-[var(--tint)] px-6 py-5">
-          <p className="text-[14.5px] leading-relaxed text-[var(--ink-2)]">
-            This snapshot is a summary of the answers you gave us. It is not a medical assessment and
-            does not diagnose anything. It&rsquo;s a starting point for a conversation.
-          </p>
-        </div>
-
-        {/* numbers */}
-        <div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--line)] sm:grid-cols-4">
-          {[
-            { l: "Current weight", v: answers.weight ? `${answers.weight} kg` : "—", s: "" },
-            { l: "BMI", v: bmi ? String(bmi) : "—", s: bmi ? bmiBand(bmi) : "" },
-            { l: "Goal", v: (answers.goal as string) || "—", s: "From your answers" },
-            { l: "Activity", v: ((answers.activity as string) || "—").split(" — ")[0], s: "Based on your routine" },
-          ].map((t) => (
-            <div key={t.l} className="bg-[var(--paper)] px-4 py-4">
-              <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[var(--ink-3)]">{t.l}</p>
-              <p className="tabular mt-2.5 font-[var(--font-display)] text-[28px] font-bold leading-tight">{t.v}</p>
-              {t.s && <p className="mt-1.5 text-[12.5px] leading-snug text-[var(--ink-2)]">{t.s}</p>}
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 max-w-[70ch] text-[13.5px] leading-relaxed text-[var(--ink-3)]">
-          BMI is a rough screening number, not a verdict. It doesn&rsquo;t distinguish muscle from fat
-          and it doesn&rsquo;t know your body — we use Asian-Indian cut-offs, and your dietitian will
-          measure properly at your consultation.
-        </p>
-
-        {/* cards */}
-        {cards.length > 0 && (
-          <>
-            <h2 className="mt-16 text-[clamp(28px,4vw,42px)]">What stands out</h2>
-            <div className="mt-8 grid gap-4 md:grid-cols-2">
-              {cards.map((c) => (
-                <div key={c.heading} className="rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-7">
-                  <h3 className="text-[20px]">{c.heading}</h3>
-                  <p className="mt-2.5 text-[15px] leading-relaxed text-[var(--ink-2)]">{c.body}</p>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* focus */}
-        <h2 className="mt-16 text-[clamp(28px,4vw,42px)]">What we&rsquo;d focus on first</h2>
-        <ol className="mt-6 grid gap-3">
-          {focus.map((f, i) => (
-            <li key={i} className="flex gap-5 rounded-2xl border border-[var(--line)] bg-[var(--paper)] px-6 py-5">
-              <span className="tabular font-[var(--font-display)] text-[15px] font-bold text-[var(--accent-text)]">
-                {i + 1}
-              </span>
-              <span className="text-[16px] leading-relaxed text-[var(--ink-2)]">
-                <Rich text={f} />
-              </span>
-            </li>
-          ))}
-        </ol>
-
-        {/* recommendation + CTA */}
-        {caution ? (
-          <div className="mt-16 rounded-2xl border border-[var(--alert)]/25 bg-[var(--alert)]/6 px-8 py-8">
-            <h2 className="text-[24px]">Please speak to your doctor first</h2>
-            <p className="mt-3 max-w-[62ch] text-[16px] leading-relaxed text-[var(--ink-2)]">
-              Based on what you&rsquo;ve told us, we&rsquo;d want your doctor involved before starting
-              any nutrition programme. That&rsquo;s not us turning you away — it&rsquo;s us doing this
-              properly. Bring their guidance to your consultation and we&rsquo;ll build around it.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/book" className="inline-flex min-h-[54px] items-center rounded-full bg-[var(--ink)] px-7 text-[16px] font-semibold text-white">
-                Book a consultation
-              </Link>
-              <Link href="/medical-disclaimer" className="inline-flex min-h-[54px] items-center rounded-full border border-[var(--line)] px-7 text-[16px] font-semibold">
-                Read our medical disclaimer
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="relative mt-16 overflow-hidden rounded-[26px] bg-[#0F2E3D] px-9 py-10 text-white"><span className="grid-layer grid-layer-dark" aria-hidden />
-            <p className="eyebrow !text-white/45">Recommended programme</p>
-            <h2 className="relative mt-4 text-[clamp(30px,4.2vw,44px)]">{rec.name}</h2>
-            <p className="relative mt-5 max-w-[58ch] text-[17px] leading-relaxed text-white/70">
-              Based on your answers, we&rsquo;d suggest starting here. A consultation is where it gets
-              real — your dietitian will go through your reports, your routine and your history
-              properly, and build a plan around it.
-            </p>
-            <div className="relative mt-9 flex flex-wrap gap-3">
-              <Link href="/book" className="inline-flex min-h-[54px] items-center rounded-full bg-[var(--accent)] px-7 text-[16px] font-semibold text-[#0F2E3D] transition-transform duration-200 hover:-translate-y-0.5">
-                Book your consultation →
-              </Link>
-              <Link href={`/programs/${rec.slug}`} className="inline-flex min-h-[54px] items-center rounded-full border border-white/25 px-7 text-[16px] font-semibold transition-colors hover:bg-white/10">
-                Learn more
-              </Link>
-            </div>
-            <p className="relative mt-6 text-[14px] text-white/55">
-              No obligation. If we don&rsquo;t think we&rsquo;re the right fit for you, we&rsquo;ll tell you.
-            </p>
-          </div>
-        )}
-
-        <div className="mt-10 flex flex-wrap gap-3 border-t border-[var(--line)] pt-8">
-          <button onClick={() => window.print()} className="rounded-full border border-[var(--line)] px-5 py-3 text-[14.5px] font-medium transition-colors hover:border-[var(--ink)]">
-            Print or save as PDF
-          </button>
-          <button
-            onClick={() => {
-              try { localStorage.removeItem(STORAGE); } catch {}
-              setAnswers({}); setIdx(0); setDone(false); setShowSnapshot(false); setStarted(false);
-            }}
-            className="rounded-full border border-[var(--line)] px-5 py-3 text-[14.5px] font-medium transition-colors hover:border-[var(--ink)]"
-          >
-            Retake the assessment
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   /* ---------- contact capture ---------- */
   if (done) {
     return (
@@ -285,9 +127,39 @@ export default function AssessmentFlow() {
 
         <form
           className="mt-8 grid gap-5"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            setShowSnapshot(true);
+            if (submitting) return;
+            setSubmitting(true);
+            setSubmitError(null);
+            try {
+              const res = await fetch("/api/assessment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  answers,
+                  contact: {
+                    email: contact.email,
+                    phone: contact.phone,
+                    city: contact.city,
+                    consentService: contact.consent,
+                    consentMarketing: contact.marketing,
+                  },
+                }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok || !data?.token) {
+                setSubmitError(data?.error ?? "We couldn't save your answers. Please try again.");
+                setSubmitting(false);
+                return;
+              }
+              // The answers are safely stored now, so the local draft can go.
+              try { localStorage.removeItem(STORAGE); } catch {}
+              router.push(`/assessment/snapshot/${data.token}`);
+            } catch {
+              setSubmitError("We couldn't reach the server. Please check your connection and try again.");
+              setSubmitting(false);
+            }
           }}
         >
           <label className="grid gap-2">
@@ -343,11 +215,18 @@ export default function AssessmentFlow() {
             <span>Send me occasional nutrition tips and updates. (You can unsubscribe any time.)</span>
           </label>
 
+          {submitError && (
+            <p role="alert" className="rounded-xl border border-[var(--alert)]/30 bg-[var(--alert)]/6 px-4 py-3 text-[14.5px] text-[var(--ink-2)]">
+              {submitError}
+            </p>
+          )}
+
           <button
             type="submit"
-            className="mt-3 inline-flex min-h-[56px] items-center justify-center rounded-full bg-[var(--ink)] px-8 text-[16px] font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#163B4D]"
+            disabled={submitting}
+            className="mt-3 inline-flex min-h-[56px] items-center justify-center rounded-full bg-[var(--ink)] px-8 text-[16px] font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#163B4D] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
-            See my Snapshot →
+            {submitting ? "Preparing your Snapshot…" : "See my Snapshot →"}
           </button>
         </form>
 

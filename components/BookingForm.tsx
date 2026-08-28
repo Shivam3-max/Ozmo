@@ -25,12 +25,21 @@ function nextDays(n: number) {
   return out;
 }
 
+type Details = { name: string; phone: string; email: string; age: string; reason: string; notes: string };
+
 export default function BookingForm() {
   const [type, setType] = useState("clinic");
   const [day, setDay] = useState<string | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState<Details>({ name: "", phone: "", email: "", age: "", reason: "", notes: "" });
+  const [terms, setTerms] = useState(false);
+  const [disclaimer, setDisclaimer] = useState(false);
   const days = nextDays(8);
+
+  const set = <K extends keyof Details>(k: K, v: Details[K]) => setDetails((d) => ({ ...d, [k]: v }));
 
   if (confirmed) {
     return (
@@ -59,8 +68,7 @@ export default function BookingForm() {
           </li>
         </ol>
         <p className="mt-6 text-[13.5px] text-[var(--ink-3)]">
-          Booking reference will be issued once payments go live. For now our team will confirm your
-          slot directly.
+          Our team will confirm your slot directly. If you need to change it, just message us.
         </p>
       </div>
     );
@@ -69,9 +77,35 @@ export default function BookingForm() {
   return (
     <form
       className="grid max-w-[760px] gap-10"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        setConfirmed(true);
+        if (busy || !day || !slot) return;
+        setBusy(true);
+        setError(null);
+        try {
+          const res = await fetch("/api/booking", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type,
+              date: day,
+              time: slot,
+              ...details,
+              acceptTerms: terms,
+              acceptDisclaimer: disclaimer,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setError(data?.error ?? "We couldn't confirm that booking. Please try again.");
+            setBusy(false);
+            return;
+          }
+          setConfirmed(true);
+        } catch {
+          setError("We couldn't reach the server. Please check your connection and try again.");
+        }
+        setBusy(false);
       }}
     >
       {/* step 1 */}
@@ -155,14 +189,14 @@ export default function BookingForm() {
           3 · Your details
         </legend>
         <div className="grid gap-5 sm:grid-cols-2">
-          <label className="grid gap-2"><span className={labelCls}>Name</span><input required type="text" className={fieldCls} /></label>
-          <label className="grid gap-2"><span className={labelCls}>Phone</span><input required type="tel" className={fieldCls} /></label>
-          <label className="grid gap-2"><span className={labelCls}>Email</span><input required type="email" className={fieldCls} /></label>
-          <label className="grid gap-2"><span className={labelCls}>Age</span><input required type="number" min={13} max={100} className={fieldCls} /></label>
+          <label className="grid gap-2"><span className={labelCls}>Name</span><input required type="text" value={details.name} onChange={(e) => set("name", e.target.value)} className={fieldCls} /></label>
+          <label className="grid gap-2"><span className={labelCls}>Phone</span><input required type="tel" value={details.phone} onChange={(e) => set("phone", e.target.value)} className={fieldCls} /></label>
+          <label className="grid gap-2"><span className={labelCls}>Email</span><input required type="email" value={details.email} onChange={(e) => set("email", e.target.value)} className={fieldCls} /></label>
+          <label className="grid gap-2"><span className={labelCls}>Age</span><input required type="number" min={13} max={100} value={details.age} onChange={(e) => set("age", e.target.value)} className={fieldCls} /></label>
         </div>
         <label className="grid gap-2">
           <span className={labelCls}>Main reason for consultation</span>
-          <select required defaultValue="" className={fieldCls}>
+          <select required value={details.reason} onChange={(e) => set("reason", e.target.value)} className={fieldCls}>
             <option value="" disabled>Choose one</option>
             <option>Weight loss</option>
             <option>Weight gain</option>
@@ -178,7 +212,7 @@ export default function BookingForm() {
         </label>
         <label className="grid gap-2">
           <span className={labelCls}>Anything we should know before we meet? <span className="font-normal normal-case tracking-normal">(optional)</span></span>
-          <textarea rows={4} className="rounded-lg border border-[var(--line)] bg-[var(--paper)] p-4 text-[16px] leading-relaxed" />
+          <textarea rows={4} value={details.notes} onChange={(e) => set("notes", e.target.value)} className="rounded-xl border border-[var(--line)] bg-[var(--paper)] p-4 text-[16px] leading-relaxed" />
         </label>
       </fieldset>
 
@@ -186,29 +220,35 @@ export default function BookingForm() {
       <fieldset className="grid gap-4">
         <legend className="mb-2 font-[var(--font-display)] text-[21px] font-semibold">4 · Confirm</legend>
         <label className="flex items-start gap-3 text-[14.5px] leading-relaxed text-[var(--ink-2)]">
-          <input type="checkbox" required className="mt-1 h-4 w-4 shrink-0" />
+          <input type="checkbox" required checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1 h-4 w-4 shrink-0" />
           <span>
             I&rsquo;ve read and accept the <Link href="/terms" className="underline">Terms of Service</Link> and{" "}
             <Link href="/privacy-policy" className="underline">Privacy Policy</Link>.
           </span>
         </label>
         <label className="flex items-start gap-3 text-[14.5px] leading-relaxed text-[var(--ink-2)]">
-          <input type="checkbox" required className="mt-1 h-4 w-4 shrink-0" />
+          <input type="checkbox" required checked={disclaimer} onChange={(e) => setDisclaimer(e.target.checked)} className="mt-1 h-4 w-4 shrink-0" />
           <span>
             I understand that Ozmo provides nutrition and lifestyle guidance and does not diagnose or
             treat medical conditions.{" "}
             <Link href="/medical-disclaimer" className="underline">Read our medical disclaimer</Link>.
           </span>
         </label>
+        {error && (
+          <p role="alert" className="rounded-xl border border-[var(--alert)]/30 bg-[var(--alert)]/6 px-4 py-3 text-[14.5px] text-[var(--ink-2)]">
+            {error}
+          </p>
+        )}
+
         <button
           type="submit"
-          disabled={!day || !slot}
+          disabled={!day || !slot || busy}
           className="mt-2 inline-flex min-h-[52px] w-fit items-center rounded-lg bg-[var(--ink)] px-7 text-[16px] font-semibold text-white transition-colors hover:bg-[#163B4D] disabled:cursor-not-allowed disabled:opacity-35"
         >
-          Confirm booking →
+          {busy ? "Confirming…" : "Confirm booking →"}
         </button>
         <p className="text-[13.5px] text-[var(--ink-3)]">
-          Payment can be completed at the clinic. Online payment is coming shortly.
+          Payment is completed at the clinic for now. Online payment is coming shortly.
         </p>
       </fieldset>
     </form>

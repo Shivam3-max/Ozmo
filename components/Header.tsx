@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Logo from "./Logo";
 import { programs } from "@/lib/programs";
 import { conditions } from "@/lib/conditions";
@@ -10,7 +10,35 @@ export default function Header() {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<"programs" | "conditions" | "knowledge" | null>(null);
 
+  // The panel sits below the header, so travelling from a trigger down into it
+  // crosses a strip that belongs to neither. Without a grace period the panel
+  // closes before the pointer ever arrives.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  };
+  const openPanel = (name: "programs" | "conditions") => {
+    cancelClose();
+    setPanel(name);
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setPanel(null), 220);
+  };
+
+  useEffect(() => cancelClose, []);
+
+  // Escape should always get you out of an open panel.
+  useEffect(() => {
+    if (!panel) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPanel(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panel]);
+
   const close = () => {
+    cancelClose();
     setOpen(false);
     setPanel(null);
   };
@@ -23,19 +51,25 @@ export default function Header() {
         </Link>
 
         {/* desktop nav */}
-        <nav className="hidden items-center gap-1 lg:flex" onMouseLeave={() => setPanel(null)}>
+        <nav
+          className="hidden h-full items-center gap-1 lg:flex"
+          onMouseLeave={scheduleClose}
+          onMouseEnter={cancelClose}
+        >
           <button
             className="rounded-md px-3 py-2 text-[15px] font-medium hover:text-[var(--accent-text)]"
-            onMouseEnter={() => setPanel("programs")}
-            onClick={() => setPanel(panel === "programs" ? null : "programs")}
+            onMouseEnter={() => openPanel("programs")}
+            onFocus={() => openPanel("programs")}
+            onClick={() => (panel === "programs" ? setPanel(null) : openPanel("programs"))}
             aria-expanded={panel === "programs"}
           >
             Programmes
           </button>
           <button
             className="rounded-md px-3 py-2 text-[15px] font-medium hover:text-[var(--accent-text)]"
-            onMouseEnter={() => setPanel("conditions")}
-            onClick={() => setPanel(panel === "conditions" ? null : "conditions")}
+            onMouseEnter={() => openPanel("conditions")}
+            onFocus={() => openPanel("conditions")}
+            onClick={() => (panel === "conditions" ? setPanel(null) : openPanel("conditions"))}
             aria-expanded={panel === "conditions"}
           >
             Conditions
@@ -66,7 +100,11 @@ export default function Header() {
           </div>
 
           {panel && (
-            <div className="absolute left-0 right-0 top-[80px] border-b border-[var(--line)] bg-[var(--paper)] shadow-[0_12px_28px_rgba(15,46,61,0.08)]">
+            <div
+              className="absolute left-0 right-0 top-[80px] border-b border-[var(--line)] bg-[var(--paper)] shadow-[0_12px_28px_rgba(15,46,61,0.08)]"
+              onMouseEnter={cancelClose}
+              onMouseLeave={scheduleClose}
+            >
               <div className="mx-auto grid max-w-[1240px] gap-8 px-6 py-9 md:grid-cols-3">
                 {panel === "programs" &&
                   programs.map((p) => (

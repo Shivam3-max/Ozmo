@@ -1,0 +1,667 @@
+// Ozmo Health OS — data model
+// Written from docs/12-DATA-MODEL-TECH.md. Postgres so that scalar lists and
+// Json work natively; the Clinic table exists from day one so multi-tenancy is
+// a where-clause later rather than a rewrite.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+// Local development runs on SQLite so the whole stack is verifiable without a
+// database account. Production needs Postgres (Vercel's filesystem is
+// ephemeral and read-only) — switch `provider` to "postgresql", point
+// DATABASE_URL at Neon/Supabase and re-run migrate. Every field below is
+// deliberately expressed in types both providers support, so that switch is
+// the provider line and nothing else.
+datasource db {
+  provider = "sqlite"
+}
+
+/**
+ * ───────────────────────── tenancy & identity ─────────────────────────
+ */
+
+model Clinic {
+  id        String   @id @default(cuid())
+  name      String
+  legalName String?
+  gstin     String?
+  address   String?
+  city      String?
+  phone     String?
+  email     String?
+  timezone  String   @default("Asia/Kolkata")
+  settings  Json?
+  createdAt DateTime @default(now())
+
+  users     User[]
+  leads     Lead[]
+  clients   Client[]
+  programs  Program[]
+  foods     Food[]
+  templates PlanTemplate[]
+  messages  ContactMessage[]
+  audits    AuditLog[]
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  DIETITIAN
+  ASSISTANT
+  FRONT_DESK
+  CLIENT
+}
+
+model User {
+  id           String    @id @default(cuid())
+  clinicId     String
+  role         UserRole  @default(CLIENT)
+  name         String
+  email        String    @unique
+  phone        String?   @unique
+  passwordHash String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  clinic            Clinic             @relation(fields: [clinicId], references: [id])
+  client            Client?
+  assignedLeads     Lead[]             @relation("LeadOwner")
+  leadActivities    LeadActivity[]
+  appointments      Appointment[]      @relation("Dietitian")
+  primaryOf         Client[]           @relation("PrimaryDietitian")
+  createdPlans      DietPlan[]
+  createdTemplates  PlanTemplate[]
+  consultationNotes ConsultationNote[]
+  sentMessages      Message[]
+  auditLogs         AuditLog[]
+
+  @@index([clinicId, role])
+}
+
+/**
+ * ───────────────────────── leads & assessment ─────────────────────────
+ */
+
+enum LeadSource {
+  ASSESSMENT
+  CONTACT_FORM
+  BOOKING
+  INSTAGRAM
+  GOOGLE_ADS
+  WHATSAPP
+  REFERRAL
+  WALK_IN
+  PHONE
+  OTHER
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  CONSULTATION_BOOKED
+  CONSULTED
+  CONVERTED
+  LOST
+}
+
+model Lead {
+  id       String  @id @default(cuid())
+  clinicId String
+  name     String
+  email    String?
+  phone    String
+  city     String?
+
+  source LeadSource @default(ASSESSMENT)
+  stage  LeadStage  @default(NEW)
+  score  Int        @default(0)
+
+  goal                   String?
+  conditions             Json?
+  readiness              Int     @default(0)
+  requiresMedicalCaution Boolean @default(false)
+
+  lostReason        String?
+  assignedToId      String?
+  nextActionAt      DateTime?
+  convertedClientId String?
+
+  consentService   Boolean   @default(true)
+  consentMarketing Boolean   @default(false)
+  consentAt        DateTime?
+  policyVersion    String    @default("2026-08-28")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clinic       Clinic         @relation(fields: [clinicId], references: [id])
+  assignedTo   User?          @relation("LeadOwner", fields: [assignedToId], references: [id])
+  assessment   Assessment?
+  activities   LeadActivity[]
+  appointments Appointment[]
+
+  @@index([clinicId, stage])
+  @@index([clinicId, createdAt])
+}
+
+model LeadActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String
+  note      String?
+  staffId   String?
+  createdAt DateTime @default(now())
+
+  lead  Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  staff User? @relation(fields: [staffId], references: [id])
+
+  @@index([leadId, createdAt])
+}
+
+model Assessment {
+  id       String  @id @default(cuid())
+  leadId   String? @unique
+  clientId String? @unique
+  token    String  @unique
+
+  // full answer payload, versioned so old submissions stay readable
+  responses     Json
+  schemaVersion Int  @default(1)
+
+  // denormalised for querying — worth the duplication
+  age            Int?
+  gender         String?
+  heightCm       Float?
+  weightKg       Float?
+  bmi            Float?
+  goal           String?
+  activityLevel  String?
+  conditions     Json?
+  foodPreference String?
+  readiness      Int     @default(0)
+
+  snapshotCards          Json?
+  snapshotFocus          Json?
+  recommendedProgram     String?
+  requiresMedicalCaution Boolean @default(false)
+
+  completedAt DateTime  @default(now())
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  client Client? @relation(fields: [clientId], references: [id])
+}
+
+model ContactMessage {
+  id        String    @id @default(cuid())
+  clinicId  String
+  name      String
+  phone     String
+  email     String?
+  topic     String
+  message   String
+  handledAt DateTime?
+  createdAt DateTime  @default(now())
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId, createdAt])
+}
+
+/**
+ * ───────────────────────── clients & programmes ─────────────────────────
+ */
+
+enum ClientStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  AT_RISK
+  ARCHIVED
+}
+
+model Client {
+  id         String @id @default(cuid())
+  clinicId   String
+  userId     String @unique
+  clientCode String @unique
+
+  dob              DateTime?
+  gender           String?
+  city             String?
+  occupation       String?
+  emergencyContact String?
+
+  heightCm       Float?
+  startWeightKg  Float?
+  targetWeightKg Float?
+  targetDate     DateTime?
+
+  foodPreference   String?
+  allergies        Json?
+  dislikes         Json?
+  cooksAtHome      String?
+  eatsOutFrequency String?
+  mealTimes        Json?
+
+  primaryDietitianId String?
+  status             ClientStatus @default(ACTIVE)
+
+  joinedAt  DateTime  @default(now())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  clinic           Clinic          @relation(fields: [clinicId], references: [id])
+  user             User            @relation(fields: [userId], references: [id])
+  primaryDietitian User?           @relation("PrimaryDietitian", fields: [primaryDietitianId], references: [id])
+  assessment       Assessment?
+  healthProfiles   HealthProfile[]
+  enrollments      Enrollment[]
+  dietPlans        DietPlan[]
+  appointments     Appointment[]
+  measurements     Measurement[]
+  foodLogs         FoodLog[]
+  thread           MessageThread?
+  documents        Document[]
+
+  @@index([clinicId, status])
+}
+
+model HealthProfile {
+  id            String   @id @default(cuid())
+  clientId      String
+  conditions    Json?
+  medications   Json?
+  supplements   Json?
+  familyHistory Json?
+  symptoms      Json?
+  notes         String?
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, version])
+}
+
+model Program {
+  id          String  @id @default(cuid())
+  clinicId    String
+  slug        String
+  name        String
+  description String?
+  durations   Json?
+  pricing     Json?
+  inclusions  Json?
+  followUps   String?
+  isActive    Boolean @default(true)
+  order       Int     @default(0)
+
+  clinic      Clinic       @relation(fields: [clinicId], references: [id])
+  enrollments Enrollment[]
+
+  @@unique([clinicId, slug])
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+model Enrollment {
+  id             String           @id @default(cuid())
+  clientId       String
+  programId      String
+  durationMonths Int
+  startDate      DateTime
+  endDate        DateTime
+  status         EnrollmentStatus @default(ACTIVE)
+  pricePaid      Decimal?
+
+  followUpsIncluded Int @default(0)
+  followUpsUsed     Int @default(0)
+  reportsIncluded   Int @default(0)
+  reportsDelivered  Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  program   Program    @relation(fields: [programId], references: [id])
+  dietPlans DietPlan[]
+
+  @@index([clientId, status])
+}
+
+/**
+ * ───────────────────────── plans ─────────────────────────
+ */
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum MealSlot {
+  EARLY_MORNING
+  BREAKFAST
+  MID_MORNING
+  LUNCH
+  EVENING
+  DINNER
+  BEDTIME
+}
+
+model DietPlan {
+  id           String     @id @default(cuid())
+  clientId     String
+  enrollmentId String?
+  version      Int        @default(1)
+  status       PlanStatus @default(DRAFT)
+
+  targetCalories Int?
+  targetProtein  Int?
+  targetCarbs    Int?
+  targetFat      Int?
+  notes          String?
+
+  createdById String
+  publishedAt DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id])
+  createdBy  User        @relation(fields: [createdById], references: [id])
+  days       PlanDay[]
+
+  @@index([clientId, status])
+}
+
+model PlanDay {
+  id        String @id @default(cuid())
+  planId    String
+  dayOfWeek Int
+
+  plan  DietPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  meals PlanMeal[]
+
+  @@unique([planId, dayOfWeek])
+}
+
+model PlanMeal {
+  id        String   @id @default(cuid())
+  planDayId String
+  slot      MealSlot
+  time      String?
+  notes     String?
+
+  day   PlanDay    @relation(fields: [planDayId], references: [id], onDelete: Cascade)
+  items PlanItem[]
+
+  @@unique([planDayId, slot])
+}
+
+model PlanItem {
+  id         String  @id @default(cuid())
+  planMealId String
+  foodId     String?
+  customName String?
+
+  quantity Float  @default(1)
+  unit     String @default("katori")
+
+  calories Float @default(0)
+  protein  Float @default(0)
+  carbs    Float @default(0)
+  fat      Float @default(0)
+  fibre    Float @default(0)
+
+  isAlternative Boolean @default(false)
+  whyThisWorks  String?
+  order         Int     @default(0)
+
+  meal PlanMeal @relation(fields: [planMealId], references: [id], onDelete: Cascade)
+  food Food?    @relation(fields: [foodId], references: [id])
+
+  @@index([planMealId, order])
+}
+
+model PlanTemplate {
+  id             String   @id @default(cuid())
+  clinicId       String
+  name           String
+  description    String?
+  tags           Json?
+  calorieBand    Int?
+  foodPreference String?
+  conditions     Json?
+  structure      Json?
+  timesUsed      Int      @default(0)
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  clinic    Clinic @relation(fields: [clinicId], references: [id])
+  createdBy User?  @relation(fields: [createdById], references: [id])
+
+  @@index([clinicId])
+}
+
+/**
+ * ───────────────────────── food database ─────────────────────────
+ */
+
+model Food {
+  id             String  @id @default(cuid())
+  clinicId       String?
+  name           String
+  alternateNames Json?
+  category       String
+
+  servingUnit  String @default("katori")
+  servingGrams Float  @default(100)
+
+  calories Float @default(0)
+  protein  Float @default(0)
+  carbs    Float @default(0)
+  fat      Float @default(0)
+  fibre    Float @default(0)
+
+  glycemicTag   String?
+  conditionTags Json?
+
+  isVeg     Boolean @default(true)
+  isVegan   Boolean @default(false)
+  isJain    Boolean @default(false)
+  allergens Json?
+
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  clinic    Clinic?    @relation(fields: [clinicId], references: [id])
+  planItems PlanItem[]
+
+  @@index([category])
+  @@index([name])
+}
+
+/**
+ * ───────────────────────── care & tracking ─────────────────────────
+ */
+
+enum AppointmentType {
+  INITIAL
+  FOLLOW_UP
+}
+
+enum AppointmentMode {
+  IN_CLINIC
+  VIDEO
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Appointment {
+  id          String            @id @default(cuid())
+  clientId    String?
+  leadId      String?
+  dietitianId String?
+  type        AppointmentType   @default(INITIAL)
+  mode        AppointmentMode   @default(IN_CLINIC)
+  status      AppointmentStatus @default(SCHEDULED)
+
+  scheduledAt DateTime
+  durationMin Int      @default(60)
+  meetingUrl  String?
+  reason      String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client    Client?           @relation(fields: [clientId], references: [id])
+  lead      Lead?             @relation(fields: [leadId], references: [id])
+  dietitian User?             @relation("Dietitian", fields: [dietitianId], references: [id])
+  note      ConsultationNote?
+
+  @@index([scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+model ConsultationNote {
+  id               String    @id @default(cuid())
+  appointmentId    String    @unique
+  subjective       String?
+  observations     String?
+  planOfAction     String?
+  nextReviewAt     DateTime?
+  sharedWithClient Boolean   @default(false)
+  createdById      String
+  createdAt        DateTime  @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  createdBy   User        @relation(fields: [createdById], references: [id])
+}
+
+model Measurement {
+  id         String   @id @default(cuid())
+  clientId   String
+  date       DateTime @default(now())
+  weightKg   Float?
+  waistCm    Float?
+  hipCm      Float?
+  chestCm    Float?
+  armCm      Float?
+  bodyFatPct Float?
+  note       String?
+  createdAt  DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, date])
+}
+
+enum LogSource {
+  FROM_PLAN
+  SWAPPED
+  OFF_PLAN
+}
+
+model FoodLog {
+  id         String    @id @default(cuid())
+  clientId   String
+  date       DateTime
+  slot       MealSlot
+  source     LogSource @default(FROM_PLAN)
+  customText String?
+  quantity   Float?
+  unit       String?
+  loggedAt   DateTime  @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, date])
+}
+
+model MessageThread {
+  id            String   @id @default(cuid())
+  clientId      String   @unique
+  lastMessageAt DateTime @default(now())
+  staffUnread   Int      @default(0)
+  clientUnread  Int      @default(0)
+
+  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  messages Message[]
+}
+
+model Message {
+  id        String    @id @default(cuid())
+  threadId  String
+  senderId  String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User          @relation(fields: [senderId], references: [id])
+
+  @@index([threadId, createdAt])
+}
+
+enum DocumentType {
+  DIET_PLAN
+  PROGRESS_REPORT
+  CONSULT_NOTE
+  LAB_REPORT
+  INVOICE
+  OTHER
+}
+
+model Document {
+  id        String       @id @default(cuid())
+  clientId  String
+  type      DocumentType
+  title     String
+  fileUrl   String
+  createdAt DateTime     @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, type])
+}
+
+/**
+ * ───────────────────────── audit ─────────────────────────
+ */
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  clinicId   String
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  changes    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  actor  User?  @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([clinicId, createdAt])
+}

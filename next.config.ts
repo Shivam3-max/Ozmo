@@ -3,6 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // better-sqlite3 is a native addon and Prisma's client loads a wasm engine —
+  // neither survives being bundled into the server chunk.
+  serverExternalPackages: [
+    "@prisma/adapter-better-sqlite3",
+    "better-sqlite3",
+    "@prisma/client",
+  ],
   async headers() {
     return [
       {
