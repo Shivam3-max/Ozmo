@@ -7,6 +7,7 @@ import { programs } from "../lib/programs.ts";
 import { FOODS } from "./food-seed.ts";
 import { PRACTICE_LIBRARY } from "./practice-library.ts";
 import { PLAN_TEMPLATES } from "./plan-templates.ts";
+import { generateTemplates } from "./templates/generate.ts";
 
 const prisma = new PrismaClient({
   adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" }),
@@ -112,7 +113,8 @@ async function main() {
 
   // --- her real plans, as reusable templates ------------------------------
   let tpls = 0;
-  for (const t of PLAN_TEMPLATES) {
+  const allTemplates = [...PLAN_TEMPLATES, ...generateTemplates()];
+  for (const t of allTemplates) {
     const existing = await prisma.planTemplate.findFirst({ where: { clinicId: clinic.id, name: t.name } });
     if (existing) continue;
     await prisma.planTemplate.create({
@@ -123,12 +125,13 @@ async function main() {
         dietPreference: t.dietPreference ?? null,
         conditions: t.conditions,
         tags: t.tags,
+        // Category is the first tag — the library groups on it.
         structure: { dayMode: t.dayMode, dayCount: t.dayCount, days: t.days, sections: t.sections },
       },
     });
     tpls += 1;
   }
-  console.log("plan templates added:", tpls, "of", PLAN_TEMPLATES.length);
+  console.log("plan templates added:", tpls, "of", allTemplates.length);
 
   if (adminPassword || dietitianPassword) {
     console.log("\n─── staff logins (shown once — store them now) ───");

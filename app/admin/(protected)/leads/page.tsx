@@ -45,7 +45,29 @@ export default async function LeadsPage({
 
   return (
     <>
-      <PageTitle title="Leads" sub="Sorted by score — the most ready people sit at the top." />
+      <PageTitle
+        title="Leads"
+        sub="Sorted by score — the most ready people sit at the top."
+        action={
+          <Link href="/admin/leads/new" className="rounded-full bg-[var(--ink)] px-4 py-2.5 text-[13.5px] font-semibold text-white transition-colors hover:bg-[#163B4D]">
+            + Add lead
+          </Link>
+        }
+      />
+
+      <form action="/admin/leads" className="mb-4 flex flex-wrap gap-2">
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Search name, phone or email…"
+          className="min-h-[42px] w-[280px] rounded-full border border-[var(--line)] bg-[var(--paper)] px-4 text-[14.5px]"
+        />
+        {stage !== "ALL" && <input type="hidden" name="stage" value={stage} />}
+        <button className="min-h-[42px] rounded-full border border-[var(--line)] bg-[var(--paper)] px-5 text-[14px] font-semibold hover:border-[var(--ink)]">
+          Search
+        </button>
+        {q && <Link href="/admin/leads" className="self-center text-[13.5px] text-[var(--ink-3)]">Clear</Link>}
+      </form>
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         {STAGES.map((s) => (

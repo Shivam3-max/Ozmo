@@ -270,6 +270,28 @@ export default function PlanBuilder({
               </button>
               <button
                 onClick={async () => {
+                  await save(false);
+                  const res = await fetch(`/api/admin/plans/${planId}/duplicate`, { method: "POST" });
+                  const data = await res.json().catch(() => ({}));
+                  if (data?.planId) router.push(`/admin/plans/${data.planId}`);
+                  else setMessage("Couldn't start a new version.");
+                }}
+                className="rounded-full border border-[var(--line)] px-4 py-2 text-[13.5px] font-semibold hover:border-[var(--ink)]"
+                title="Copy this plan as the next version, for a follow-up revision"
+              >
+                New version
+              </button>
+              <a
+                href={`/admin/plans/${planId}/print`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => void save(false)}
+                className="rounded-full border border-[var(--line)] px-4 py-2 text-[13.5px] font-semibold hover:border-[var(--ink)]"
+              >
+                PDF
+              </a>
+              <button
+                onClick={async () => {
                   if (blockers.length) { setMessage("Resolve the blocking warnings before publishing."); return; }
                   setPublishing(true);
                   await save(true);

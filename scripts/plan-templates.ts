@@ -39,7 +39,7 @@ export const PLAN_TEMPLATES: Template[] = [
     description: "Single-day plan for the menstrual phase. Iron, magnesium and anti-inflammatory focus, with cramp and bloating support.",
     dietPreference: "Vegetarian",
     conditions: ["Menstrual health"],
-    tags: ["period", "vegetarian", "anti-inflammatory"],
+    tags: ["her plans", "hormonal", "period", "vegetarian"],
     dayMode: "SINGLE",
     dayCount: 1,
     days: [
@@ -121,7 +121,7 @@ export const PLAN_TEMPLATES: Template[] = [
     description: "Three distinct days with shared morning and evening rituals. Good as a short reset or a trial week.",
     dietPreference: "Vegetarian",
     conditions: [],
-    tags: ["3-day", "vegetarian", "rotation"],
+    tags: ["her plans", "weight", "3-day", "vegetarian"],
     dayMode: "WEEK",
     dayCount: 3,
     days: [
@@ -180,7 +180,7 @@ export const PLAN_TEMPLATES: Template[] = [
     name: "Thyroid & Fatty Liver — Working Professional",
     description: "Built around an office day, with four interchangeable snack options and four lunch options. Includes workout-day and Sunday variations.",
     conditions: ["Thyroid", "Fatty liver"],
-    tags: ["thyroid", "fatty-liver", "office", "options"],
+    tags: ["her plans", "metabolic", "thyroid", "fatty-liver"],
     dayMode: "SINGLE",
     dayCount: 1,
     days: [
@@ -302,7 +302,7 @@ export const PLAN_TEMPLATES: Template[] = [
     description: "Day 1 of a 15-day planner. Heavy on movement, breathwork and liver support alongside the food.",
     dietPreference: "Vegetarian",
     conditions: ["Diabetes", "Fatty liver"],
-    tags: ["diabetes", "fatty-liver", "15-day", "vegetarian"],
+    tags: ["her plans", "metabolic", "diabetes", "15-day"],
     dayMode: "SEQUENCE",
     dayCount: 15,
     days: [

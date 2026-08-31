@@ -46,6 +46,28 @@ export default async function AdminOverview() {
         sub={`${fresh} new in the last 24 hours · ${newLeads} leads waiting`}
       />
 
+      <div className="mb-8 flex flex-wrap gap-2">
+        {[
+          { href: "/admin/leads/new", label: "+ Add lead", primary: true },
+          { href: "/admin/clients/new", label: "+ Add client", primary: true },
+          { href: "/admin/clients", label: "Write a plan" },
+          { href: "/admin/plans", label: "Templates" },
+          { href: "/admin/appointments", label: "Today's schedule" },
+        ].map((a) => (
+          <Link
+            key={a.href}
+            href={a.href}
+            className={`rounded-full px-4 py-2.5 text-[13.5px] font-semibold transition-colors ${
+              a.primary
+                ? "bg-[var(--ink)] text-white hover:bg-[#163B4D]"
+                : "border border-[var(--line)] bg-[var(--paper)] text-[var(--ink-2)] hover:border-[var(--ink)]"
+            }`}
+          >
+            {a.label}
+          </Link>
+        ))}
+      </div>
+
       <div className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--line)] lg:grid-cols-4">
         <Stat label="New leads" value={newLeads} sub="not yet contacted" href="/admin/leads?stage=NEW" tone={newLeads > 0 ? "watch" : "plain"} />
         <Stat label="Call today" value={needsCall} sub="score 70+" href="/admin/leads" tone={needsCall > 0 ? "alert" : "plain"} />

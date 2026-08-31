@@ -5,22 +5,54 @@ import { PageTitle, Panel, Empty, Flag, th, td } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function ClientsPage() {
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   const user = await requireStaff();
   const showHealth = canSeeHealthData(user.role);
-  const clients = await clinicClients();
+  const { q = "" } = await searchParams;
+  const all = await clinicClients();
+  const needle = q.trim().toLowerCase();
+  const clients = needle
+    ? all.filter(
+        (c) =>
+          c.user.name.toLowerCase().includes(needle) ||
+          c.clientCode.toLowerCase().includes(needle) ||
+          (c.user.phone ?? "").includes(needle)
+      )
+    : all;
 
   return (
     <>
       <PageTitle
         title="Clients"
-        sub={`${clients.length} on the books`}
+        sub={q ? `${clients.length} of ${all.length} match “${q}”` : `${all.length} on the books`}
         action={
-          <Link href="/admin/leads" className="rounded-full border border-[var(--line)] bg-[var(--paper)] px-4 py-2.5 text-[13.5px] font-semibold hover:border-[var(--ink)]">
-            Convert a lead →
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/admin/leads" className="rounded-full border border-[var(--line)] bg-[var(--paper)] px-4 py-2.5 text-[13.5px] font-semibold hover:border-[var(--ink)]">
+              Convert a lead
+            </Link>
+            <Link href="/admin/clients/new" className="rounded-full bg-[var(--ink)] px-4 py-2.5 text-[13.5px] font-semibold text-white transition-colors hover:bg-[#163B4D]">
+              + Add client
+            </Link>
+          </div>
         }
       />
+
+      <form action="/admin/clients" className="mb-4 flex flex-wrap gap-2">
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Search name, code or phone…"
+          className="min-h-[42px] w-[280px] rounded-full border border-[var(--line)] bg-[var(--paper)] px-4 text-[14.5px]"
+        />
+        <button className="min-h-[42px] rounded-full border border-[var(--line)] bg-[var(--paper)] px-5 text-[14px] font-semibold hover:border-[var(--ink)]">
+          Search
+        </button>
+        {q && <Link href="/admin/clients" className="self-center text-[13.5px] text-[var(--ink-3)]">Clear</Link>}
+      </form>
 
       <Panel>
         {clients.length === 0 ? (
