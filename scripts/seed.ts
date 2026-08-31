@@ -5,6 +5,8 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../lib/generated/prisma/client.js";
 import { programs } from "../lib/programs.ts";
 import { FOODS } from "./food-seed.ts";
+import { PRACTICE_LIBRARY } from "./practice-library.ts";
+import { PLAN_TEMPLATES } from "./plan-templates.ts";
 
 const prisma = new PrismaClient({
   adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" }),
@@ -76,7 +78,7 @@ async function main() {
 
   // --- food database ------------------------------------------------------
   let created = 0;
-  for (const f of FOODS) {
+  for (const f of [...FOODS, ...PRACTICE_LIBRARY]) {
     const existing = await prisma.food.findFirst({ where: { clinicId: clinic.id, name: f.name } });
     if (existing) continue;
     await prisma.food.create({
@@ -97,6 +99,8 @@ async function main() {
         isVeg: f.veg !== false,
         isVegan: f.vegan === true,
         allergens: f.allergens ?? [],
+        defaultType: ("defaultType" in f ? (f as { defaultType: string }).defaultType : "FOOD") as "FOOD",
+        isPrep: "isPrep" in f ? Boolean((f as { isPrep?: boolean }).isPrep) : false,
         // Seed values are indicative only — the dietitian must confirm each one
         // before plans built on them go to a client.
         isVerified: false,
@@ -104,7 +108,27 @@ async function main() {
     });
     created += 1;
   }
-  console.log("foods added:", created, "of", FOODS.length);
+  console.log("library items added:", created, "of", FOODS.length + PRACTICE_LIBRARY.length);
+
+  // --- her real plans, as reusable templates ------------------------------
+  let tpls = 0;
+  for (const t of PLAN_TEMPLATES) {
+    const existing = await prisma.planTemplate.findFirst({ where: { clinicId: clinic.id, name: t.name } });
+    if (existing) continue;
+    await prisma.planTemplate.create({
+      data: {
+        clinicId: clinic.id,
+        name: t.name,
+        description: t.description,
+        dietPreference: t.dietPreference ?? null,
+        conditions: t.conditions,
+        tags: t.tags,
+        structure: { dayMode: t.dayMode, dayCount: t.dayCount, days: t.days, sections: t.sections },
+      },
+    });
+    tpls += 1;
+  }
+  console.log("plan templates added:", tpls, "of", PLAN_TEMPLATES.length);
 
   if (adminPassword || dietitianPassword) {
     console.log("\n─── staff logins (shown once — store them now) ───");

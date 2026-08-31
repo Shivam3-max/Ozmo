@@ -342,6 +342,8 @@ model Enrollment {
 
 /**
  * ───────────────────────── plans ─────────────────────────
+ * Modelled on four of her real plans (docs/14): free-text slots, typed rows,
+ * first-class option groups, three day structures, no required macros.
  */
 
 enum PlanStatus {
@@ -350,14 +352,26 @@ enum PlanStatus {
   ARCHIVED
 }
 
-enum MealSlot {
-  EARLY_MORNING
-  BREAKFAST
-  MID_MORNING
-  LUNCH
-  EVENING
-  DINNER
-  BEDTIME
+enum PlanDayMode {
+  SINGLE
+  WEEK
+  SEQUENCE
+}
+
+enum PlanItemType {
+  FOOD
+  SUPPLEMENT
+  EXERCISE
+  BREATHWORK
+  LIFESTYLE
+  HYDRATION
+  PREP
+  NOTE
+}
+
+enum PlanSectionKind {
+  GUIDELINES
+  NOTES
 }
 
 model DietPlan {
@@ -367,11 +381,20 @@ model DietPlan {
   version      Int        @default(1)
   status       PlanStatus @default(DRAFT)
 
+  /// "15 Days Vegetarian Diabetes & Fatty Liver Plan"
+  title          String
+  dayMode        PlanDayMode @default(SINGLE)
+  dayCount       Int         @default(1)
+  startDate      DateTime?
+  dietPreference String?
+  conditionsNote String?
+
+  /// Optional and advisory. Never required to publish.
+  showTargets    Boolean @default(false)
   targetCalories Int?
   targetProtein  Int?
   targetCarbs    Int?
   targetFat      Int?
-  notes          String?
 
   createdById String
   publishedAt DateTime?
@@ -379,61 +402,78 @@ model DietPlan {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id])
-  createdBy  User        @relation(fields: [createdById], references: [id])
+  client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  enrollment Enrollment?   @relation(fields: [enrollmentId], references: [id])
+  createdBy  User          @relation(fields: [createdById], references: [id])
   days       PlanDay[]
+  sections   PlanSection[]
 
   @@index([clientId, status])
 }
 
 model PlanDay {
-  id        String @id @default(cuid())
-  planId    String
-  dayOfWeek Int
+  id     String @id @default(cuid())
+  planId String
+
+  /// -1 is the "every day" column — rows repeating across the whole plan.
+  index Int
+  label String
 
   plan  DietPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
-  meals PlanMeal[]
+  slots PlanSlot[]
 
-  @@unique([planId, dayOfWeek])
+  @@unique([planId, index])
 }
 
-model PlanMeal {
-  id        String   @id @default(cuid())
+model PlanSlot {
+  id        String @id @default(cuid())
   planDayId String
-  slot      MealSlot
-  time      String?
-  notes     String?
+
+  label      String
+  timeHint   String?
+  condition  String?
+  optionNote String?
+  order      Int     @default(0)
 
   day   PlanDay    @relation(fields: [planDayId], references: [id], onDelete: Cascade)
   items PlanItem[]
 
-  @@unique([planDayId, slot])
+  @@index([planDayId, order])
 }
 
 model PlanItem {
-  id         String  @id @default(cuid())
-  planMealId String
-  foodId     String?
-  customName String?
+  id         String       @id @default(cuid())
+  planSlotId String
+  type       PlanItemType @default(FOOD)
 
-  quantity Float  @default(1)
-  unit     String @default("katori")
+  /// The line as she would write it: "150gm curd (whisked, jeera, pudhina)".
+  text     String
+  quantity String?
+  prepNote String?
 
-  calories Float @default(0)
-  protein  Float @default(0)
-  carbs    Float @default(0)
-  fat      Float @default(0)
-  fibre    Float @default(0)
+  /// Items sharing a group number inside one slot are alternatives to each other.
+  optionGroup Int?
 
-  isAlternative Boolean @default(false)
-  whyThisWorks  String?
-  order         Int     @default(0)
+  foodId String?
+  order  Int     @default(0)
 
-  meal PlanMeal @relation(fields: [planMealId], references: [id], onDelete: Cascade)
+  slot PlanSlot @relation(fields: [planSlotId], references: [id], onDelete: Cascade)
   food Food?    @relation(fields: [foodId], references: [id])
 
-  @@index([planMealId, order])
+  @@index([planSlotId, order])
+}
+
+model PlanSection {
+  id     String          @id @default(cuid())
+  planId String
+  kind   PlanSectionKind
+  title  String?
+  items  Json?
+  order  Int             @default(0)
+
+  plan DietPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, order])
 }
 
 model PlanTemplate {
@@ -442,9 +482,9 @@ model PlanTemplate {
   name           String
   description    String?
   tags           Json?
-  calorieBand    Int?
-  foodPreference String?
+  dietPreference String?
   conditions     Json?
+  /// A whole plan shape — days, slots, items — ready to duplicate onto a client.
   structure      Json?
   timesUsed      Int      @default(0)
   createdById    String?
@@ -483,6 +523,11 @@ model Food {
   isVegan   Boolean @default(false)
   isJain    Boolean @default(false)
   allergens Json?
+
+  /// What kind of plan row this becomes when picked — supplements and standing
+  /// preps live in the same library as foods.
+  defaultType PlanItemType @default(FOOD)
+  isPrep      Boolean      @default(false)
 
   isVerified Boolean  @default(false)
   createdAt  DateTime @default(now())
@@ -585,7 +630,7 @@ model FoodLog {
   id         String    @id @default(cuid())
   clientId   String
   date       DateTime
-  slot       MealSlot
+  slotLabel  String
   source     LogSource @default(FROM_PLAN)
   customText String?
   quantity   Float?

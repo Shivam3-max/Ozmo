@@ -7,6 +7,7 @@ import { getProgram } from "@/lib/programs";
 import { questions } from "@/lib/assessment";
 import { PageTitle, Panel, StageTag, Flag, td, th, timeAgo } from "@/components/admin/ui";
 import StageControl from "@/components/admin/StageControl";
+import ConvertLead from "@/components/admin/ConvertLead";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,12 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const user = await requireStaff();
   const showHealth = canSeeHealthData(user.role);
   const { id } = await params;
+
+  const programs = await prisma.program.findMany({
+    where: { clinicId: "ozmo", isActive: true },
+    orderBy: { order: "asc" },
+    select: { slug: true, name: true, durations: true },
+  });
 
   const lead = await prisma.lead.findUnique({
     where: { id },
@@ -140,6 +147,26 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             <h2 className="mb-4 text-[15px] font-semibold">Move this lead</h2>
             <StageControl leadId={lead.id} stage={lead.stage} />
           </Panel>
+
+          {lead.convertedClientId ? (
+            <Panel className="border-[var(--good)]/30 bg-[var(--good)]/5 px-5 py-5">
+              <p className="text-[14.5px] text-[var(--ink-2)]">
+                Already a client.{" "}
+                <Link href={`/admin/clients/${lead.convertedClientId}`} className="font-semibold text-[var(--good)]">
+                  Open their file →
+                </Link>
+              </p>
+            </Panel>
+          ) : (
+            <Panel className="px-5 py-5">
+              <h2 className="mb-4 text-[15px] font-semibold">Convert to client</h2>
+              <ConvertLead
+                leadId={lead.id}
+                programs={programs.map((p) => ({ ...p, durations: asArray<number>(p.durations) }))}
+                suggested={a?.recommendedProgram ?? null}
+              />
+            </Panel>
+          )}
 
           <Panel>
             <h2 className="border-b border-[var(--line)] px-5 py-3.5 text-[15px] font-semibold">Appointments</h2>
