@@ -81,3 +81,10 @@ export function canSeeHealthData(role: string) {
 export function canEditPlans(role: string) {
   return role === "SUPER_ADMIN" || role === "DIETITIAN";
 }
+
+/** Portal guard. Middleware checks too, but never rely on it alone. */
+export async function requireClient(): Promise<SessionUser> {
+  const session = await getSession();
+  if (!session || session.role !== "CLIENT") redirect("/login");
+  return session;
+}

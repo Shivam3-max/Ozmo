@@ -6,6 +6,8 @@ import { CLINIC_ID } from "@/lib/leads";
 import { asStrings } from "@/lib/json";
 import { PageTitle, Panel, Flag, Empty, timeAgo, th, td } from "@/components/admin/ui";
 import NewPlanButton from "@/components/admin/NewPlanButton";
+import AddMeasurement from "@/components/admin/AddMeasurement";
+import PortalInvite from "@/components/admin/PortalInvite";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +107,10 @@ export default async function ClientDetail({ params }: { params: Promise<{ id: s
 
           {showHealth && (
             <Panel>
-              <h2 className="border-b border-[var(--line)] px-5 py-3.5 text-[15px] font-semibold">Measurements</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-5 py-3">
+                <h2 className="text-[15px] font-semibold">Measurements</h2>
+                <AddMeasurement clientId={client.id} />
+              </div>
               {client.measurements.length === 0 ? (
                 <Empty title="Nothing recorded" body="Weights logged by the client, or entered here after a consultation, appear in this list." />
               ) : (
@@ -167,6 +172,11 @@ export default async function ClientDetail({ params }: { params: Promise<{ id: s
               )}
             </Panel>
           )}
+
+          <Panel className="px-5 py-5">
+            <h2 className="mb-3 text-[15px] font-semibold">Client portal</h2>
+            <PortalInvite clientId={client.id} email={client.user.email} />
+          </Panel>
 
           <Panel className="px-5 py-5">
             <h2 className="mb-3 text-[15px] font-semibold">Programme</h2>

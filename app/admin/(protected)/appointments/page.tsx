@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireStaff } from "@/lib/auth";
 import { PageTitle, Panel, Flag, Empty, timeAgo } from "@/components/admin/ui";
 import AppointmentActions from "@/components/admin/AppointmentActions";
+import ConsultNote from "@/components/admin/ConsultNote";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export default async function AppointmentsPage({
         : { scheduledAt: { gte: startOfToday } },
     orderBy: { scheduledAt: view === "past" ? "desc" : "asc" },
     take: 120,
-    include: { lead: true, client: { include: { user: true } }, dietitian: true },
+    include: { lead: true, client: { include: { user: true } }, dietitian: true, note: true },
   });
 
   // Anything still "scheduled" after its time has passed needs marking off.
@@ -120,11 +121,28 @@ export default async function AppointmentsPage({
                           {a.reason && <p className="mt-1 text-[13.5px] text-[var(--ink-3)]">Reason: {a.reason}</p>}
                           {a.notes && <p className="mt-1 text-[13.5px] italic text-[var(--ink-3)]">&ldquo;{a.notes}&rdquo;</p>}
                         </div>
-                        {a.status === "SCHEDULED" ? (
-                          <AppointmentActions id={a.id} />
-                        ) : (
-                          <span className="shrink-0 text-[12.5px] text-[var(--ink-3)]">{timeAgo(a.updatedAt)}</span>
-                        )}
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          {a.status === "SCHEDULED" ? (
+                            <AppointmentActions id={a.id} />
+                          ) : (
+                            <span className="text-[12.5px] text-[var(--ink-3)]">{timeAgo(a.updatedAt)}</span>
+                          )}
+                          <ConsultNote
+                            appointmentId={a.id}
+                            who={who}
+                            initial={
+                              a.note
+                                ? {
+                                    subjective: a.note.subjective,
+                                    observations: a.note.observations,
+                                    planOfAction: a.note.planOfAction,
+                                    nextReviewAt: a.note.nextReviewAt?.toISOString() ?? null,
+                                    sharedWithClient: a.note.sharedWithClient,
+                                  }
+                                : null
+                            }
+                          />
+                        </div>
                       </li>
                     );
                   })}

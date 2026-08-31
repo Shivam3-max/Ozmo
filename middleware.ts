@@ -13,16 +13,30 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (pathname === "/admin/login") return NextResponse.next();
 
+  // Password setup runs off a one-time invite token, so it can't require a session.
+  if (pathname.startsWith("/portal/setup")) return NextResponse.next();
+
+  const isPortal = pathname.startsWith("/portal");
+
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const secret = process.env.AUTH_SECRET;
 
   if (token && secret) {
     try {
       const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
-      if (STAFF_ROLES.has(String(payload.role))) {
+      const role = String(payload.role);
+      const allowed = isPortal ? role === "CLIENT" : STAFF_ROLES.has(role);
+      if (allowed) {
         const res = NextResponse.next();
         res.headers.set("X-Robots-Tag", "noindex, nofollow");
         return res;
+      }
+      // Signed in, but on the wrong surface — send them to their own.
+      if (isPortal && STAFF_ROLES.has(role)) {
+        return NextResponse.redirect(new URL("/admin", req.url));
+      }
+      if (!isPortal && role === "CLIENT") {
+        return NextResponse.redirect(new URL("/portal", req.url));
       }
     } catch {
       // fall through to the redirect
@@ -30,9 +44,10 @@ export async function middleware(req: NextRequest) {
   }
 
   const url = req.nextUrl.clone();
-  url.pathname = "/admin/login";
-  url.search = pathname === "/admin" ? "" : `?next=${encodeURIComponent(pathname)}`;
+  url.pathname = isPortal ? "/login" : "/admin/login";
+  const root = isPortal ? "/portal" : "/admin";
+  url.search = pathname === root ? "" : `?next=${encodeURIComponent(pathname)}`;
   return NextResponse.redirect(url);
 }
 
-export const config = { matcher: ["/admin/:path*"] };
+export const config = { matcher: ["/admin/:path*", "/portal/:path*"] };

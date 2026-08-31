@@ -20,6 +20,7 @@ const NAV = [
     group: "Care",
     items: [
       { href: "/admin/plans", label: "Diet plans" },
+      { href: "/admin/messages", label: "Messages" },
       { href: "/admin/foods", label: "Library" },
       { href: "/admin/enquiries", label: "Enquiries" },
     ],
