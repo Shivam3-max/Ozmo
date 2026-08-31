@@ -18,6 +18,9 @@ export type PlanItemDraft = {
   quantity?: string;
   prepNote?: string;
   optionGroup?: number | null;
+  /** Link back to the library item, so nutrition roll-ups and the delete guard
+   *  keep working. Rewritten on every save, so it must survive the round trip. */
+  foodId?: string | null;
 };
 
 export type PlanSlotDraft = {

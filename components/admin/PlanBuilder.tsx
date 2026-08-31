@@ -81,6 +81,7 @@ export default function PlanBuilder({
                     quantity: i.quantity || null,
                     prepNote: i.prepNote || null,
                     optionGroup: i.optionGroup ?? null,
+                    foodId: i.foodId ?? null,
                   })),
               })),
             })),
@@ -215,7 +216,7 @@ export default function PlanBuilder({
   const insertFromLibrary = (l: LibraryItem) => {
     const target = day.slots[day.slots.length - 1];
     if (!target) { setMessage("Add a slot first, then pick from the library."); return; }
-    addItem(target.id, { type: l.defaultType, text: l.name, quantity: `1 ${l.servingUnit}` });
+    addItem(target.id, { type: l.defaultType, text: l.name, quantity: `1 ${l.servingUnit}`, foodId: l.id });
   };
 
   /* ── render ───────────────────────────────────────────────────────────── */

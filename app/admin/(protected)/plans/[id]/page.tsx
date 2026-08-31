@@ -74,6 +74,7 @@ export default async function PlanBuilderPage({ params }: { params: Promise<{ id
           quantity: i.quantity ?? undefined,
           prepNote: i.prepNote ?? undefined,
           optionGroup: i.optionGroup,
+          foodId: i.foodId,
         })),
       })),
     })),

@@ -12,6 +12,7 @@ const itemSchema = z.object({
   quantity: z.string().trim().max(200).nullish(),
   prepNote: z.string().trim().max(500).nullish(),
   optionGroup: z.number().int().nullish(),
+  foodId: z.string().max(40).nullish(),
 });
 
 const slotSchema = z.object({
@@ -102,6 +103,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
                     quantity: it.quantity ?? null,
                     prepNote: it.prepNote ?? null,
                     optionGroup: it.optionGroup ?? null,
+                    foodId: it.foodId ?? null,
                     order: ii,
                   })),
                 },
