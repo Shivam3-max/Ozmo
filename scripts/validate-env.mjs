@@ -83,7 +83,7 @@ for (const [name, value] of [
   ["SEED_DIETITIAN_PASSWORD", dietitianPassword],
 ]) {
   if (value !== undefined && value.length < 20) {
-    fail(`${name} must be at least 20 characters when provided.`);
+    fail(`${name} must be at least 20 characters when provided — this one is ${value.length}. Four or five hyphenated words work well.`);
   }
 }
 
