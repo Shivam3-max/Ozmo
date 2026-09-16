@@ -3,7 +3,7 @@ import { Button, Section, SectionHeader, Card, Arrow } from "@/components/ui";
 import PageHero from "@/components/PageHero";
 
 export const metadata: Metadata = {
-  title: "About Ozmo Diet Clinic",
+  title: "About the Clinic",
   description:
     "Ozmo Diet Clinic builds personalised nutrition programmes around your body, your health and your kitchen — with tracking, follow-ups and a dietitian who stays involved.",
   alternates: { canonical: "/about" },
@@ -14,7 +14,7 @@ const beliefs = [
   { n: "02", t: "The plan must fit your kitchen", b: "If your mother cooks one meal for five people, your plan has to work inside that meal. If you eat out four times a week, your plan has to account for it. We build around your life, not around an ideal version of it." },
   { n: "03", t: "What gets measured, changes", b: "Weight, waist, energy, adherence — we track from day one. Not to judge you, but because progress you can see is progress you keep going for. And because a plan that isn't working should be identifiable in week two, not month three." },
   { n: "04", t: "Nutrition supports medicine; it doesn't replace it", b: "We work alongside your doctor. We read your reports to understand you better, not to diagnose you. We will never tell you to stop a medication, and we'll tell you plainly when something needs a doctor rather than a dietitian." },
-  { n: "05", t: "Consistency beats intensity", b: "A plan you follow 80% of the time for six months will beat a perfect plan you follow completely for eleven days. Everything we've built — the tracking, the check-ins, the reminders, the score — exists to protect that 80%." },
+  { n: "05", t: "Consistency beats intensity", b: "A plan you follow 80% of the time for six months will beat a perfect plan you follow completely for eleven days. Everything we've built — the tracking, the check-ins, the score — exists to protect that 80%." },
 ];
 
 export default function AboutPage() {
@@ -90,7 +90,7 @@ export default function AboutPage() {
             </p>
             <div className="mt-7 rounded-xl border-l-[3px] border-[var(--accent)] bg-[var(--tint)] px-5 py-4">
               <p className="text-[14.5px] leading-relaxed text-[var(--ink-2)]">
-                Clinic address, hours and full team details are being finalised for publication.
+                Clinic visits are confirmed appointment-by-appointment so clients receive current directions, access notes and preparation instructions.
               </p>
             </div>
             <div className="mt-8">
@@ -98,7 +98,7 @@ export default function AboutPage() {
             </div>
           </div>
           <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-[var(--tint)]">
-            <svg viewBox="0 0 400 300" className="h-full w-full" role="img" aria-label="Clinic photo placeholder">
+            <svg viewBox="0 0 400 300" className="h-full w-full" role="img" aria-label="Clinic consultation illustration">
               <rect width="400" height="300" fill="#F2F6F7" />
               <rect x="40" y="90" width="150" height="170" rx="6" fill="#0F2E3D" opacity="0.08" />
               <rect x="210" y="140" width="150" height="120" rx="6" fill="#0F2E3D" opacity="0.08" />

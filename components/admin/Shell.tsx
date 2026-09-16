@@ -5,7 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import Logo from "@/components/Logo";
 
-const NAV = [
+type NavItem = { href: string; label: string; exact?: boolean; roles?: string[] };
+type NavSection = { group: string; items: NavItem[] };
+
+const NAV: NavSection[] = [
   {
     group: "Practice",
     items: [
@@ -23,6 +26,17 @@ const NAV = [
       { href: "/admin/messages", label: "Messages" },
       { href: "/admin/foods", label: "Library" },
       { href: "/admin/enquiries", label: "Enquiries" },
+    ],
+  },
+  {
+    group: "Clinic",
+    items: [
+      { href: "/admin/staff", label: "Staff", roles: ["SUPER_ADMIN"] },
+      { href: "/admin/data-requests", label: "Data requests", roles: ["SUPER_ADMIN"] },
+      { href: "/admin/notifications", label: "Notifications", roles: ["SUPER_ADMIN"] },
+      { href: "/admin/retention", label: "Data retention", roles: ["SUPER_ADMIN"] },
+      { href: "/admin/security", label: "Sign-in activity", roles: ["SUPER_ADMIN"] },
+      { href: "/admin/account", label: "Your account" },
     ],
   },
 ];
@@ -51,7 +65,7 @@ export default function Shell({
               onClick={() => setOpen(!open)}
               aria-label={open ? "Close menu" : "Open menu"}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
                 <path d="M3 7h18M3 12h18M3 17h18" />
               </svg>
             </button>
@@ -64,15 +78,15 @@ export default function Shell({
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="hidden text-right sm:block">
+            <Link href="/admin/account" className="hidden text-right hover:opacity-80 sm:block" title="Your account and password">
               <span className="block text-[13.5px] font-semibold leading-tight">{user.name}</span>
               <span className="block text-[11px] uppercase tracking-[0.08em] text-[var(--ink-3)]">
-                {user.role.replace(/_/g, " ").toLowerCase()}
+                {user.role.replace(/_/g, " ").toLowerCase()} · account
               </span>
-            </span>
+            </Link>
             <button
               onClick={async () => {
-                await fetch("/api/auth/logout", { method: "POST" });
+                await fetch("/api/auth/logout?scope=staff", { method: "POST" });
                 router.push("/admin/login");
                 router.refresh();
               }}
@@ -95,7 +109,7 @@ export default function Shell({
                 {section.group}
               </p>
               <div className="grid gap-0.5">
-                {section.items.map((item) => (
+                {section.items.filter((item) => !item.roles || item.roles.includes(user.role)).map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}

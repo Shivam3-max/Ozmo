@@ -38,13 +38,13 @@ export function Clause({ heading, children }: { heading: string; children: React
 }
 
 export function Draft() {
+  if (process.env.NODE_ENV === "production") return null;
+
   return (
     <div className="rounded-2xl border border-[var(--line)] bg-[var(--tint)] px-6 py-5">
       <p className="text-[15px] leading-relaxed text-[var(--ink-2)]">
-        <strong className="text-[var(--ink)]">Draft for legal review.</strong> This page states our
-        actual position and practice, and is being reviewed by a lawyer before it becomes the final
-        published version. Clinic entity details, retention periods and grievance contacts will be
-        completed at that point.
+        <strong className="text-[var(--ink)]">Internal legal review note.</strong> Confirm clinic
+        entity details, retention periods and grievance contacts before public launch.
       </p>
     </div>
   );

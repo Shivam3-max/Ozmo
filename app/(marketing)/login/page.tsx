@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function LoginPage() {
   return (
     <Section backdrop="both">
-      <Suspense fallback={null}>
+      <Suspense fallback={<h1 className="text-[clamp(30px,4vw,38px)]">Log in to Ozmo</h1>}>
         <ClientLoginForm />
       </Suspense>
     </Section>

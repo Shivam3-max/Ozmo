@@ -1,36 +1,37 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff, canSeeHealthData } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { PageTitle, Panel, Stat, StageTag, Flag, Empty, th, td, timeAgo } from "@/components/admin/ui";
+import { formatPhone } from "@/lib/phone";
+import { clinicMidnight } from "@/lib/clinic-time";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminOverview() {
   const user = await requireStaff();
-  const showHealth = canSeeHealthData(user.role);
+  const showHealth = can(user.role, "health.read");
 
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
+  const startOfToday = clinicMidnight();
   const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const [newLeads, needsCall, todaysAppts, weekAppts, unhandled, cautionLeads, recent] = await Promise.all([
-    prisma.lead.count({ where: { clinicId: CLINIC_ID, stage: "NEW" } }),
-    prisma.lead.count({ where: { clinicId: CLINIC_ID, stage: "NEW", score: { gte: 70 } } }),
+    prisma.lead.count({ where: { clinicId: user.clinicId, stage: "NEW" } }),
+    prisma.lead.count({ where: { clinicId: user.clinicId, stage: "NEW", score: { gte: 70 } } }),
     prisma.appointment.count({
-      where: { status: "SCHEDULED", scheduledAt: { gte: startOfToday, lt: new Date(startOfToday.getTime() + 864e5) } },
+      where: { status: "SCHEDULED", scheduledAt: { gte: startOfToday, lt: new Date(startOfToday.getTime() + 864e5) }, OR: [{ lead: { clinicId: user.clinicId } }, { client: { clinicId: user.clinicId } }] },
     }),
     prisma.appointment.findMany({
-      where: { status: "SCHEDULED", scheduledAt: { gte: startOfToday, lte: weekAhead } },
+      where: { status: "SCHEDULED", scheduledAt: { gte: startOfToday, lte: weekAhead }, OR: [{ lead: { clinicId: user.clinicId } }, { client: { clinicId: user.clinicId } }] },
       orderBy: { scheduledAt: "asc" },
       take: 6,
       include: { lead: true, client: { include: { user: true } } },
     }),
-    prisma.contactMessage.count({ where: { clinicId: CLINIC_ID, handledAt: null } }),
-    prisma.lead.count({ where: { clinicId: CLINIC_ID, requiresMedicalCaution: true, stage: { in: ["NEW", "CONTACTED"] } } }),
+    prisma.contactMessage.count({ where: { clinicId: user.clinicId, handledAt: null } }),
+    prisma.lead.count({ where: { clinicId: user.clinicId, requiresMedicalCaution: true, stage: { in: ["NEW", "CONTACTED"] } } }),
     prisma.lead.findMany({
-      where: { clinicId: CLINIC_ID },
+      where: { clinicId: user.clinicId },
       orderBy: { createdAt: "desc" },
       take: 8,
       include: { assessment: { select: { id: true } } },
@@ -124,7 +125,7 @@ export default async function AdminOverview() {
                         <Link href={`/admin/leads/${l.id}`} className="font-semibold hover:text-[var(--accent-text)]">
                           {l.name}
                         </Link>
-                        <span className="mt-0.5 block text-[12.5px] text-[var(--ink-3)]">{l.phone}</span>
+                        <span className="mt-0.5 block text-[12.5px] text-[var(--ink-3)]">{formatPhone(l.phone)}</span>
                         {l.requiresMedicalCaution && showHealth && (
                           <span className="mt-1.5 inline-block">
                             <Flag tone="alert">caution</Flag>

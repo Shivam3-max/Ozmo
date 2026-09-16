@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
-import { notifyClinic } from "@/lib/leads";
+import { authorize } from "@/lib/auth";
+import { afterDeletionRequest } from "@/lib/notifications/public-forms";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -10,17 +11,21 @@ export const runtime = "nodejs";
  * executed instantly — some clinical records carry a retention obligation, and
  * the privacy policy states what is kept and for how long.
  */
-export async function POST() {
-  const session = await getSession();
-  if (!session || session.role !== "CLIENT") {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+export const POST = apiHandler(async function POST() {
+  const session = await authorize("portal.self");
 
   const client = await prisma.client.findFirst({
     where: { userId: session.sub, deletedAt: null },
     include: { user: true },
   });
   if (!client) return NextResponse.json({ error: "No client record." }, { status: 404 });
+
+  const open = await prisma.dataRequest.findFirst({
+    where: { clientId: client.id, type: "DELETE", status: { in: ["OPEN", "IN_PROGRESS"] } },
+  });
+  if (open) return NextResponse.json({ ok: true, requestId: open.id, alreadyOpen: true });
+
+  const request = await prisma.dataRequest.create({ data: { clientId: client.id, type: "DELETE" } });
 
   await prisma.auditLog.create({
     data: {
@@ -33,10 +38,7 @@ export async function POST() {
     },
   });
 
-  await notifyClinic(
-    `Data deletion requested — ${client.user.name}`,
-    `${client.user.name} (${client.clientCode}) has asked for their data to be deleted. Respond within the window stated in the privacy policy.`
-  );
+  await afterDeletionRequest(client.clinicId, request.id);
 
-  return NextResponse.json({ ok: true });
-}
+  return NextResponse.json({ ok: true, requestId: request.id });
+});

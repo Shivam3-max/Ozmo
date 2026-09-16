@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+import { absoluteUrl } from "@/lib/site";
 import {
   Button, Section, SectionHeader, Card, Badge, Chip, Backdrop, Arrow, Pill,
 } from "@/components/ui";
@@ -8,6 +10,10 @@ import Reveal from "@/components/Reveal";
 import HeroFrosted from "@/components/HeroFrosted";
 import DashboardPreview from "@/components/DashboardPreview";
 import Faq from "@/components/Faq";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 const goals = [
   ...conditions.map((c) => ({ label: c.name, blurb: c.cardBlurb, href: `/conditions/${c.slug}` })),
@@ -41,9 +47,36 @@ const homeFaqs = [
   { q: "How soon will I see results?", a: "That depends on your starting point, your health, your consistency and your body — and anyone who gives you a specific number without meeting you is guessing. What we can promise is that you'll be able to see your progress from week one, because we track it." },
 ];
 
+// Organisation facts only. Add address, telephone and opening hours here once the
+// clinic has confirmed them — search engines treat this as authoritative.
+const organisationSchema = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${absoluteUrl("/")}#organization`,
+      name: "Ozmo Diet Clinic",
+      url: absoluteUrl("/"),
+      logo: absoluteUrl("/apple-icon"),
+      description:
+        "Personalised diet and lifestyle programmes built around your body, your kitchen and your reports — with daily tracking, follow-ups and a dietitian who stays with you.",
+      areaServed: "IN",
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${absoluteUrl("/")}#website`,
+      name: "Ozmo Diet Clinic",
+      url: absoluteUrl("/"),
+      publisher: { "@id": `${absoluteUrl("/")}#organization` },
+      inLanguage: "en-IN",
+    },
+  ],
+};
+
 export default function Home() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organisationSchema).replace(/</g, "\\u003c") }} />
       <HeroFrosted />
 
       {/* ══════════ PROOF BAR ══════════ */}

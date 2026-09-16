@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession, isStaff } from "@/lib/auth";
-import { CLINIC_ID, POLICY_VERSION, scoreLead, logLeadActivity } from "@/lib/leads";
+import { authorize } from "@/lib/auth";
+import { POLICY_VERSION, scoreLead } from "@/lib/leads";
+import { phoneSchema } from "@/lib/validation";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
-  phone: z.string().trim().min(8, "Phone is required").max(20),
+  phone: phoneSchema,
   email: z.string().trim().email().max(200).optional().or(z.literal("")),
   city: z.string().trim().max(120).optional().or(z.literal("")),
   source: z.enum(["WALK_IN", "PHONE", "REFERRAL", "INSTAGRAM", "WHATSAPP", "GOOGLE_ADS", "OTHER"]),
@@ -18,11 +20,8 @@ const schema = z.object({
   note: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
-export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session || !isStaff(session.role)) {
-    return NextResponse.json({ error: "Not authorised." }, { status: 401 });
-  }
+export const POST = apiHandler(async function POST(req: Request) {
+  const session = await authorize("leads.manage");
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
@@ -32,7 +31,7 @@ export async function POST(req: Request) {
 
   // Walk-ins and phone enquiries are often people who already filled the form.
   const existing = await prisma.lead.findFirst({
-    where: { clinicId: CLINIC_ID, phone: d.phone },
+    where: { clinicId: session.clinicId, phone: d.phone },
     orderBy: { createdAt: "desc" },
   });
   if (existing) {
@@ -42,9 +41,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const lead = await prisma.lead.create({
+  const lead = await prisma.$transaction(async (tx) => {
+  const created = await tx.lead.create({
     data: {
-      clinicId: CLINIC_ID,
+      clinicId: session.clinicId,
       name: d.name,
       phone: d.phone,
       email: d.email || null,
@@ -71,8 +71,12 @@ export async function POST(req: Request) {
     },
   });
 
-  await logLeadActivity(lead.id, "ADDED_MANUALLY", `${d.source.replace(/_/g, " ").toLowerCase()} — added by ${session.name}`, session.sub);
-  if (d.note) await logLeadActivity(lead.id, "NOTE", d.note, session.sub);
+  await tx.leadActivity.create({
+    data: { leadId: created.id, type: "ADDED_MANUALLY", note: `${d.source.replace(/_/g, " ").toLowerCase()} — added by ${session.name}`, staffId: session.sub },
+  });
+  if (d.note) await tx.leadActivity.create({ data: { leadId: created.id, type: "NOTE", note: d.note, staffId: session.sub } });
+  return created;
+  });
 
   return NextResponse.json({ ok: true, leadId: lead.id }, { status: 201 });
-}
+});

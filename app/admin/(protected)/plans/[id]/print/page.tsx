@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff, canEditPlans } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { asStrings } from "@/lib/json";
 import PrintTrigger from "@/components/admin/PrintTrigger";
+import { CLINIC_TIME_ZONE } from "@/lib/clinic-time";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +20,11 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default async function PlanPrintPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireStaff();
-  if (!canEditPlans(user.role)) notFound();
+  if (!can(user.role, "plans.edit")) notFound();
 
   const { id } = await params;
   const plan = await prisma.dietPlan.findFirst({
-    where: { id, client: { clinicId: CLINIC_ID } },
+    where: { id, client: { clinicId: user.clinicId } },
     include: {
       days: { orderBy: { index: "asc" }, include: { slots: { orderBy: { order: "asc" }, include: { items: { orderBy: { order: "asc" } } } } } },
       sections: { orderBy: { order: "asc" } },
@@ -50,7 +51,7 @@ export default async function PlanPrintPage({ params }: { params: Promise<{ id: 
           <p className="font-semibold">{plan.client.user.name}</p>
           <p className="tabular text-[#4E6672]">{plan.client.clientCode}</p>
           <p className="tabular text-[#4E6672]">
-            {(plan.publishedAt ?? plan.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+            {(plan.publishedAt ?? plan.updatedAt).toLocaleDateString("en-IN", { timeZone: CLINIC_TIME_ZONE, day: "numeric", month: "long", year: "numeric" })}
           </p>
           <p className="tabular text-[#4E6672]">Version {plan.version}</p>
         </div>

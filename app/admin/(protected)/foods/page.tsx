@@ -1,43 +1,53 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff, canSeeHealthData, canEditPlans } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { asStrings } from "@/lib/json";
 import { ITEM_TYPES } from "@/lib/plan-types";
 import { PageTitle, Panel, Flag, Empty, th, td } from "@/components/admin/ui";
 import VerifyToggle from "@/components/admin/VerifyToggle";
+import { pageFrom, pageInfo, paging } from "@/lib/pagination";
+import Pager from "@/components/admin/Pager";
+import type { Prisma } from "@prisma/client";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 60;
 
 export default async function FoodsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; status?: string; page?: string }>;
 }) {
   const user = await requireStaff();
-  if (!canSeeHealthData(user.role)) {
+  if (!can(user.role, "health.read")) {
     return <Panel className="px-6 py-8"><p className="text-[15px] text-[var(--ink-2)]">Not part of your role&rsquo;s access.</p></Panel>;
   }
-  const editable = canEditPlans(user.role);
-  const { q = "", category = "", status = "" } = await searchParams;
+  const editable = can(user.role, "foods.edit");
+  const { q = "", category = "", status = "", page: rawPage } = await searchParams;
+  const page = pageFrom(rawPage);
 
-  const scope = { OR: [{ clinicId: CLINIC_ID }, { clinicId: null }] };
-  const [all, foods] = await Promise.all([
-    prisma.food.findMany({ where: scope, select: { category: true, isVerified: true } }),
+  const scope = { clinicId: user.clinicId };
+  const where: Prisma.FoodWhereInput = {
+    ...scope,
+    ...(q ? { name: { contains: q } } : {}),
+    ...(category ? { category } : {}),
+    ...(status === "unverified" ? { isVerified: false } : status === "verified" ? { isVerified: true } : {}),
+  };
+  // Counts and categories come from aggregates, not by loading the whole library.
+  const [allCount, unverified, categoryRows, total, foods] = await Promise.all([
+    prisma.food.count({ where: scope }),
+    prisma.food.count({ where: { ...scope, isVerified: false } }),
+    prisma.food.groupBy({ by: ["category"], where: scope, orderBy: { category: "asc" } }),
+    prisma.food.count({ where }),
     prisma.food.findMany({
-      where: {
-        ...scope,
-        ...(q ? { name: { contains: q } } : {}),
-        ...(category ? { category } : {}),
-        ...(status === "unverified" ? { isVerified: false } : status === "verified" ? { isVerified: true } : {}),
-      },
+      where,
       orderBy: [{ isVerified: "asc" }, { category: "asc" }, { name: "asc" }],
-      take: 500,
+      ...paging(page, PAGE_SIZE),
     }),
   ]);
-
-  const unverified = all.filter((f) => !f.isVerified).length;
-  const categories = [...new Set(all.map((f) => f.category))].sort();
+  const all = { length: allCount };
+  const categories = categoryRows.map((c) => c.category);
   const shortFor = (t: string) => ITEM_TYPES.find((x) => x.value === t)?.short ?? t;
 
   return (
@@ -84,7 +94,7 @@ export default async function FoodsPage({
       </form>
 
       <p className="mb-4 text-[13px] text-[var(--ink-3)]">
-        {foods.length === all.length ? `${all.length} items` : `${foods.length} of ${all.length} items`}
+        {total === all.length ? `${all.length} items` : `${total} of ${all.length} items match`}
         {editable && " · click a row to edit, or tick the circle to verify"}
       </p>
 
@@ -155,6 +165,7 @@ export default async function FoodsPage({
           </div>
         )}
       </Panel>
+      <Pager info={pageInfo(page, PAGE_SIZE, total)} base="/admin/foods" params={{ q: q || undefined, category: category || undefined, status: status || undefined }} noun="items" />
     </>
   );
 }

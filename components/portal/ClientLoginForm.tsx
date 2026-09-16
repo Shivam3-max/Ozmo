@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 export default function ClientLoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/portal";
+  const next = safeRedirectPath(params.get("next"), "/portal");
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -78,8 +79,8 @@ export default function ClientLoginForm() {
 
       <div className="mt-7 rounded-2xl border border-[var(--line)] bg-[var(--tint)] px-5 py-4">
         <p className="text-[14px] leading-relaxed text-[var(--ink-2)]">
-          <strong className="text-[var(--ink)]">No login yet?</strong> Your dietitian sends a setup
-          link once your programme starts. Message the clinic if you haven&rsquo;t had one.
+          <strong className="text-[var(--ink)]">No login yet, or forgotten your password?</strong> The
+          clinic sends you a one-time link to set it — call or message them and they&rsquo;ll send a new one.
         </p>
       </div>
 

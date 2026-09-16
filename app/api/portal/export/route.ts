@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { authorize } from "@/lib/auth";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
 /** Right of access, self-serve. Everything we hold about them, in one file. */
-export async function GET() {
-  const session = await getSession();
-  if (!session || session.role !== "CLIENT") {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+export const GET = apiHandler(async function GET() {
+  const session = await authorize("portal.self");
 
   const client = await prisma.client.findFirst({
     where: { userId: session.sub, deletedAt: null },
@@ -22,8 +20,14 @@ export async function GET() {
       foodLogs: { orderBy: { date: "asc" } },
       waterLogs: { orderBy: { date: "asc" } },
       appointments: { include: { note: true } },
-      documents: true,
+      documents: { select: { title: true, type: true, mimeType: true, sizeBytes: true, createdAt: true, visibleToClient: true } },
+      progressReports: {
+        where: { status: "SENT" },
+        select: { periodStart: true, periodEnd: true, data: true, observations: true, nextMonthFocus: true, sentAt: true },
+      },
+      // Drafts are unfinished and unreviewed; only plans that were given to the client belong in their copy.
       dietPlans: {
+        where: { status: { in: ["ACTIVE", "ARCHIVED"] } },
         include: {
           days: { include: { slots: { include: { items: true } } } },
           sections: true,
@@ -33,6 +37,10 @@ export async function GET() {
     },
   });
   if (!client) return NextResponse.json({ error: "No client record." }, { status: 404 });
+
+  await prisma.auditLog.create({
+    data: { clinicId: client.clinicId, actorId: session.sub, action: "CLIENT_DATA_EXPORTED", entityType: "Client", entityId: client.id },
+  });
 
   // Private clinical notes are not part of a client-facing export unless the
   // dietitian chose to share them.
@@ -68,7 +76,9 @@ export async function GET() {
     foodLogs: client.foodLogs,
     waterLogs: client.waterLogs,
     appointments,
+    // File contents are downloadable from My reports; the export lists what is held.
     documents: client.documents,
+    progressReports: client.progressReports,
     messages: client.thread?.messages ?? [],
   };
 
@@ -79,4 +89,4 @@ export async function GET() {
       "Cache-Control": "no-store",
     },
   });
-}
+});

@@ -8,7 +8,6 @@ const STAGES = [
   { value: "CONTACTED", label: "Contacted" },
   { value: "CONSULTATION_BOOKED", label: "Consultation booked" },
   { value: "CONSULTED", label: "Consulted" },
-  { value: "CONVERTED", label: "Converted" },
   { value: "LOST", label: "Lost" },
 ];
 
@@ -24,6 +23,8 @@ export default function StageControl({ leadId, stage }: { leadId: string; stage:
   const [saved, setSaved] = useState(false);
 
   const needsReason = value === "LOST";
+  // Converted comes only from creating the client record; after that the stage is fixed.
+  const converted = stage === "CONVERTED";
 
   return (
     <form
@@ -54,6 +55,12 @@ export default function StageControl({ leadId, stage }: { leadId: string; stage:
         setBusy(false);
       }}
     >
+      {converted ? (
+        <p className="text-[14px] text-[var(--ink-2)]">
+          <span className="block text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--ink-3)]">Stage</span>
+          Converted — this lead is now a client.
+        </p>
+      ) : (
       <label className="grid gap-1.5">
         <span className="text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--ink-3)]">Stage</span>
         <select
@@ -65,7 +72,9 @@ export default function StageControl({ leadId, stage }: { leadId: string; stage:
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
+        <span className="text-[12.5px] text-[var(--ink-3)]">To mark a lead converted, use Convert to client.</span>
       </label>
+      )}
 
       {needsReason && (
         <label className="grid gap-1.5">
@@ -96,14 +105,14 @@ export default function StageControl({ leadId, stage }: { leadId: string; stage:
       </label>
 
       {error && <p role="alert" className="text-[13.5px] text-[var(--alert)]">{error}</p>}
-      {saved && <p className="text-[13.5px] text-[var(--good)]">Saved.</p>}
+      {saved && <p role="status" className="text-[13.5px] text-[var(--good)]">Saved.</p>}
 
       <button
         type="submit"
         disabled={busy}
         className="mt-1 inline-flex min-h-[42px] items-center justify-center rounded-full bg-[var(--ink)] px-5 text-[14.5px] font-semibold text-white transition-colors hover:bg-[#163B4D] disabled:opacity-50"
       >
-        {busy ? "Saving…" : "Save"}
+        {busy ? "Saving…" : converted ? "Add note" : "Save"}
       </button>
     </form>
   );

@@ -1,24 +1,48 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaClient } from "../lib/generated/prisma/client.js";
+import { PrismaClient } from "@prisma/client";
 import { programs } from "../lib/programs.ts";
+import { CLINIC_ID } from "../lib/clinic.ts";
 import { FOODS } from "./food-seed.ts";
 import { PRACTICE_LIBRARY } from "./practice-library.ts";
 import { PLAN_TEMPLATES } from "./plan-templates.ts";
 import { generateTemplates } from "./templates/generate.ts";
 
-const prisma = new PrismaClient({
-  adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" }),
-});
+const prisma = new PrismaClient();
+const isProduction = process.env.NODE_ENV === "production";
+
+function bootstrapPassword(name: "SEED_ADMIN_PASSWORD" | "SEED_DIETITIAN_PASSWORD") {
+  const value = process.env[name];
+
+  if (isProduction) {
+    if (!value) throw new Error(`${name} is required for production bootstrap.`);
+    if (value.length < 20) throw new Error(`${name} must be at least 20 characters for production bootstrap.`);
+    return value;
+  }
+
+  return value ?? randomBytes(18).toString("base64url");
+}
+
+// Only passwords this script invented are ever printed. A password supplied via
+// SEED_*_PASSWORD is already known to whoever set it, and echoing it would copy
+// it into CI and hosting build logs (which often run without NODE_ENV set).
+const generatedHere = (name: "SEED_ADMIN_PASSWORD" | "SEED_DIETITIAN_PASSWORD") => !process.env[name];
 
 async function main() {
+  if (
+    isProduction &&
+    process.env.SEED_ADMIN_PASSWORD &&
+    process.env.SEED_ADMIN_PASSWORD === process.env.SEED_DIETITIAN_PASSWORD
+  ) {
+    throw new Error("SEED_ADMIN_PASSWORD and SEED_DIETITIAN_PASSWORD must be different.");
+  }
+
   const clinic = await prisma.clinic.upsert({
-    where: { id: "ozmo" },
+    where: { id: CLINIC_ID },
     update: {},
     create: {
-      id: "ozmo",
+      id: CLINIC_ID,
       name: "Ozmo Diet Clinic",
       timezone: "Asia/Kolkata",
     },
@@ -31,7 +55,7 @@ async function main() {
 
   let adminPassword: string | null = null;
   if (!existingAdmin) {
-    adminPassword = process.env.SEED_ADMIN_PASSWORD ?? randomBytes(9).toString("base64url");
+    adminPassword = bootstrapPassword("SEED_ADMIN_PASSWORD");
     await prisma.user.create({
       data: {
         clinicId: clinic.id,
@@ -46,7 +70,7 @@ async function main() {
   const dietitianEmail = process.env.SEED_DIETITIAN_EMAIL ?? "dietitian@ozmodietclinic.com";
   let dietitianPassword: string | null = null;
   if (!(await prisma.user.findUnique({ where: { email: dietitianEmail } }))) {
-    dietitianPassword = process.env.SEED_DIETITIAN_PASSWORD ?? randomBytes(9).toString("base64url");
+    dietitianPassword = bootstrapPassword("SEED_DIETITIAN_PASSWORD");
     await prisma.user.create({
       data: {
         clinicId: clinic.id,
@@ -133,11 +157,15 @@ async function main() {
   }
   console.log("plan templates added:", tpls, "of", allTemplates.length);
 
-  if (adminPassword || dietitianPassword) {
-    console.log("\n─── staff logins (shown once — store them now) ───");
-    if (adminPassword) console.log(`  SUPER_ADMIN  ${adminEmail}  ${adminPassword}`);
-    if (dietitianPassword) console.log(`  DIETITIAN    ${dietitianEmail}  ${dietitianPassword}`);
+  const showAdmin = !isProduction && adminPassword && generatedHere("SEED_ADMIN_PASSWORD");
+  const showDietitian = !isProduction && dietitianPassword && generatedHere("SEED_DIETITIAN_PASSWORD");
+  if (showAdmin || showDietitian) {
+    console.log("\n─── generated staff logins (shown once — store them now) ───");
+    if (showAdmin) console.log(`  SUPER_ADMIN  ${adminEmail}  ${adminPassword}`);
+    if (showDietitian) console.log(`  DIETITIAN    ${dietitianEmail}  ${dietitianPassword}`);
     console.log("  Change these before the site is public.\n");
+  } else if (adminPassword || dietitianPassword) {
+    console.log("staff accounts created with the passwords from SEED_*_PASSWORD (not printed).");
   }
 }
 

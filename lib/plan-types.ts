@@ -101,7 +101,7 @@ export function emptyPlan(title: string): PlanDraft {
  * flag she dismisses than a missed one.
  */
 export function planWarnings(
-  plan: PlanDraft,
+  plan: { days: { slots: { label: string; items: { text: string }[] }[] }[] },
   client: { allergies: string[]; dislikes: string[]; foodPreference?: string | null }
 ) {
   const warnings: { slot: string; item: string; reason: string; severity: "block" | "warn" }[] = [];

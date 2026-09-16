@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { currentClient } from "@/lib/portal";
 import RecordWeight from "@/components/portal/RecordWeight";
 import WeightChart from "@/components/portal/WeightChart";
+import { CLINIC_TIME_ZONE } from "@/lib/clinic-time";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,7 @@ export default async function MeasurementsPage() {
               {[...measurements].reverse().map((m) => (
                 <tr key={m.id}>
                   <td className="tabular border-b border-[var(--line-soft)] px-4 py-3">
-                    {m.date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    {m.date.toLocaleDateString("en-IN", { timeZone: CLINIC_TIME_ZONE, day: "numeric", month: "short", year: "numeric" })}
                   </td>
                   <td className="tabular border-b border-[var(--line-soft)] px-4 py-3 font-semibold">{m.weightKg ?? "—"}</td>
                   <td className="tabular border-b border-[var(--line-soft)] px-4 py-3">{m.waistCm ?? "—"}</td>

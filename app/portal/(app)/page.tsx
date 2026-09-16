@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { currentClient, todaysPlan, todaysLogs, ozmoScore, currentStreak, BAND_COPY } from "@/lib/portal";
 import MealRow from "@/components/portal/MealRow";
+import { clinicDay, clinicHour, daysBetween, formatClinic } from "@/lib/clinic-time";
 import WaterTracker from "@/components/portal/WaterTracker";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export default async function PortalHome() {
   const [today, { logs, water }, score, streak, latest] = await Promise.all([
     todaysPlan(client.id, enrollment?.startDate),
     todaysLogs(client.id),
-    ozmoScore(client.id),
+    ozmoScore(client.id, enrollment?.startDate ?? client.joinedAt),
     currentStreak(client.id),
     prisma.measurement.findFirst({
       where: { clientId: client.id, weightKg: { not: null } },
@@ -26,19 +27,15 @@ export default async function PortalHome() {
   const done = today ? today.slots.filter((s) => loggedBySlot.has(s.label)).length : 0;
   const total = today?.slots.length ?? 0;
 
-  const hour = new Date().getHours();
+  const hour = clinicHour();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const change =
     latest?.weightKg && client.startWeightKg
       ? Math.round((latest.weightKg - client.startWeightKg) * 10) / 10
       : null;
 
-  const dayNo = enrollment
-    ? Math.max(1, Math.ceil((Date.now() - enrollment.startDate.getTime()) / 864e5))
-    : null;
-  const totalDays = enrollment
-    ? Math.ceil((enrollment.endDate.getTime() - enrollment.startDate.getTime()) / 864e5)
-    : null;
+  const dayNo = enrollment ? Math.max(1, daysBetween(clinicDay(enrollment.startDate), clinicDay()) + 1) : null;
+  const totalDays = enrollment ? daysBetween(clinicDay(enrollment.startDate), clinicDay(enrollment.endDate)) : null;
 
   return (
     <>
@@ -46,7 +43,7 @@ export default async function PortalHome() {
         {greeting}, {client.user.name.split(" ")[0]}
       </h1>
       <p className="mt-1.5 text-[14.5px] text-[var(--ink-3)]">
-        {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
+        {formatClinic(new Date(), { weekday: "long", day: "numeric", month: "long" })}
         {dayNo && totalDays ? ` · day ${dayNo} of ${totalDays}` : ""}
       </p>
 

@@ -1,17 +1,9 @@
-import { prisma } from "@/lib/db";
-import { CLINIC_ID } from "@/lib/leads";
+import { randomBytes } from "node:crypto";
 
-/** OZ-2026-0142 — readable, sortable, and safe to say on the phone. */
-export async function nextClientCode() {
+/** Readable and collision-resistant without a race-prone read/increment cycle. */
+export async function nextClientCode(_clinicId: string) {
   const year = new Date().getFullYear();
-  const prefix = `OZ-${year}-`;
-  const last = await prisma.client.findFirst({
-    where: { clientCode: { startsWith: prefix } },
-    orderBy: { clientCode: "desc" },
-    select: { clientCode: true },
-  });
-  const n = last ? Number(last.clientCode.slice(prefix.length)) + 1 : 1;
-  return `${prefix}${String(n).padStart(4, "0")}`;
+  return `OZ-${year}-${randomBytes(4).toString("hex").toUpperCase()}`;
 }
 
 export const MEAL_SLOTS = [
@@ -64,17 +56,4 @@ export function suggestTargets(opts: {
     fat: Math.round((calories * 0.27) / 9),
     carbs: Math.round((calories - weightKg * 1.6 * 4 - (calories * 0.27)) / 4),
   };
-}
-
-export async function clinicClients() {
-  return prisma.client.findMany({
-    where: { clinicId: CLINIC_ID, deletedAt: null },
-    orderBy: { joinedAt: "desc" },
-    include: {
-      user: true,
-      enrollments: { orderBy: { startDate: "desc" }, take: 1, include: { program: true } },
-      measurements: { orderBy: { date: "desc" }, take: 1 },
-      dietPlans: { where: { status: "ACTIVE" }, take: 1 },
-    },
-  });
 }

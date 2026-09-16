@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { authorize } from "@/lib/auth";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -15,14 +16,11 @@ const schema = z.object({
   note: z.string().trim().max(300).optional().or(z.literal("")),
 });
 
-export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session || session.role !== "CLIENT") {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+export const POST = apiHandler(async function POST(req: Request) {
+  const session = await authorize("portal.self");
   const client = await prisma.client.findFirst({
     where: { userId: session.sub, deletedAt: null },
-    select: { id: true },
+    select: { id: true, clinicId: true },
   });
   if (!client) return NextResponse.json({ error: "No client record." }, { status: 404 });
 
@@ -35,16 +33,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Enter at least one number." }, { status: 422 });
   }
 
-  await prisma.measurement.create({
-    data: {
-      clientId: client.id,
-      date: new Date(),
-      weightKg: n(d.weightKg),
-      waistCm: n(d.waistCm),
-      hipCm: n(d.hipCm),
-      note: d.note || null,
-    },
+  await prisma.$transaction(async (tx) => {
+    const m = await tx.measurement.create({
+      data: {
+        clientId: client.id,
+        date: new Date(),
+        weightKg: n(d.weightKg),
+        waistCm: n(d.waistCm),
+        hipCm: n(d.hipCm),
+        note: d.note || null,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        clinicId: client.clinicId, actorId: session.sub, action: "MEASUREMENT_ADDED_BY_CLIENT",
+        entityType: "Client", entityId: client.id, changes: { measurementId: m.id },
+      },
+    });
   });
 
   return NextResponse.json({ ok: true }, { status: 201 });
-}
+});

@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { requireStaff, canEditPlans } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { PageTitle, Panel } from "@/components/admin/ui";
 import FoodForm from "@/components/admin/FoodForm";
+import { can } from "@/lib/policy";
 
 export default async function NewFoodPage() {
   const user = await requireStaff();
-  if (!canEditPlans(user.role)) {
+  if (!can(user.role, "foods.edit")) {
     return <Panel className="px-6 py-8"><p className="text-[15px] text-[var(--ink-2)]">Not part of your role&rsquo;s access.</p></Panel>;
   }
   return (

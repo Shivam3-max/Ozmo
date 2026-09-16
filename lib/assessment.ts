@@ -269,6 +269,54 @@ export const mealSlots = [
   { id: "dinner", label: "Dinner" },
 ];
 
+/** Sensible bounds for measurements; anything outside is a typo, not a person. */
+const NUMBER_RANGES: Record<string, [number, number]> = {
+  height: [90, 250],
+  weight: [20, 350],
+  targetWeight: [20, 350],
+};
+
+export const TEXT_MAX = 120;
+export const TEXTAREA_MAX = 2000;
+export const MEAL_MAX = 500;
+
+/**
+ * Why an answer can't be accepted, or null if it can. Shared by the form (to
+ * stop at the question) and the API (which never trusts the form).
+ */
+export function answerProblem(q: Question, value: unknown): string | null {
+  if (value === "" || value === null || value === undefined) return null;
+  switch (q.type) {
+    case "text":
+      return typeof value === "string" && value.trim().length <= TEXT_MAX ? null : `Please keep this under ${TEXT_MAX} characters.`;
+    case "textarea":
+      return typeof value === "string" && value.length <= TEXTAREA_MAX ? null : `Please keep this under ${TEXTAREA_MAX} characters.`;
+    case "number":
+    case "height":
+    case "weight": {
+      const n =
+        typeof value === "number" ? value
+        : typeof value === "string" && /^\d{1,3}(\.\d{1,2})?$/.test(value.trim()) ? Number(value)
+        : NaN;
+      const [min, max] = NUMBER_RANGES[q.id] ?? [q.min ?? 0, q.max ?? 1000];
+      return Number.isFinite(n) && n >= min && n <= max ? null : `Enter a number between ${min} and ${max}.`;
+    }
+    case "single":
+      return typeof value === "string" && (q.options ?? []).includes(value) ? null : "Choose one of the options.";
+    case "multi":
+      return Array.isArray(value) && value.every((v) => typeof v === "string" && (q.options ?? []).includes(v))
+        ? null
+        : "Choose from the options.";
+    case "mealday":
+      return typeof value === "object" && !Array.isArray(value) &&
+        Object.entries(value as Record<string, unknown>).every(
+          ([k, v]) => mealSlots.some((m) => m.id === k) && typeof v === "string" && v.length <= MEAL_MAX
+        )
+        ? null
+        : `Keep each meal under ${MEAL_MAX} characters.`;
+  }
+}
+
 /* ---------------- Snapshot engine ---------------- */
 
 export type SnapshotCard = { heading: string; body: string };

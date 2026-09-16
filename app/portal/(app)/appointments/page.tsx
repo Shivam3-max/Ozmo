@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { currentClient } from "@/lib/portal";
+import { CLINIC_TIME_ZONE } from "@/lib/clinic-time";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,20 @@ export default async function PortalAppointments() {
                   {a.mode === "VIDEO" ? "Online video call" : "At the clinic"}
                   {a.dietitian ? ` · with ${a.dietitian.name}` : ""}
                 </p>
+                {a.mode === "VIDEO" && (
+                  a.meetingUrl ? (
+                    <a
+                      href={a.meetingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 inline-flex min-h-[44px] items-center rounded-full bg-[var(--ink)] px-5 text-[15px] font-semibold text-white"
+                    >
+                      Join the video call →
+                    </a>
+                  ) : (
+                    <p className="mt-3 text-[13.5px] text-[var(--ink-2)]">Your dietitian will add the video link here before the call.</p>
+                  )
+                )}
                 <div className="mt-4 rounded-xl bg-[var(--paper)] px-4 py-3">
                   <p className="text-[13.5px] leading-relaxed text-[var(--ink-2)]">
                     <strong className="text-[var(--ink)]">Before you come:</strong> record this
@@ -68,7 +83,7 @@ export default async function PortalAppointments() {
             {past.map((a) => (
               <div key={a.id} className="rounded-2xl border border-[var(--line)] bg-[var(--paper)] px-5 py-4">
                 <p className="tabular text-[14.5px] font-semibold">
-                  {a.scheduledAt.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+                  {a.scheduledAt.toLocaleDateString("en-IN", { timeZone: CLINIC_TIME_ZONE, day: "numeric", month: "long", year: "numeric" })}
                 </p>
                 <p className="mt-0.5 text-[13.5px] text-[var(--ink-2)]">
                   {a.type === "INITIAL" ? "Initial consultation" : "Follow-up"} · {a.status.toLowerCase().replace("_", " ")}

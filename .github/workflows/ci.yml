@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: ozmo_test
+          MYSQL_USER: ozmo
+          MYSQL_PASSWORD: ozmo_test_password
+          MYSQL_ROOT_PASSWORD: root_test_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root --password=root_test_password"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      DATABASE_URL: mysql://ozmo:ozmo_test_password@127.0.0.1:3306/ozmo_test?connection_limit=5&pool_timeout=10
+      AUTH_SECRET: ci-only-secret-at-least-32-characters-long
+      NEXT_PUBLIC_SITE_URL: https://example.test
+      ERROR_WEBHOOK_URL: https://hooks.example.test/ci-not-used
+      # Throwaway test key (32 zero bytes) — never use a published key for real documents.
+      DOCUMENT_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      # Mail goes to a local sink started below, so the regression suite can read it.
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "2525"
+      EMAIL_FROM: Ozmo Diet Clinic <ci@example.test>
+      CLINIC_NOTIFY_EMAIL: clinic-inbox@example.test
+      SMTP_LOG: ${{ github.workspace }}/smtp.log
+      # Throwaway CI accounts, created by the seed step and used by the e2e and regression tests.
+      SEED_ADMIN_EMAIL: admin@example.test
+      SEED_ADMIN_PASSWORD: ci-admin-passphrase-not-secret
+      SEED_DIETITIAN_EMAIL: dietitian@example.test
+      SEED_DIETITIAN_PASSWORD: ci-dietitian-passphrase-not-secret
+      E2E_ALLOW_DB_WRITES: "1"
+      E2E_ADMIN_EMAIL: admin@example.test
+      E2E_ADMIN_PASSWORD: ci-admin-passphrase-not-secret
+      E2E_DIETITIAN_EMAIL: dietitian@example.test
+      E2E_DIETITIAN_PASSWORD: ci-dietitian-passphrase-not-secret
+      # Shared runners are noisy; the timing check still catches a missing dummy hash (hundreds of ms).
+      TIMING_TOLERANCE_MS: "250"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run validate:env
+      - run: npx prisma migrate deploy
+      - name: Migrations match the schema
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run db:seed
+      - name: Start mail sink
+        run: node scripts/regression/smtp-sink.mjs &
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Regression suite
+        run: |
+          npx next start -p 3681 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:3681/api/health && break; sleep 1; done
+          npm run test:regression
+      - name: Retention job runs
+        run: npm run retention:preview
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-output
+          path: |
+            playwright-report/
+            test-results/
+            server.log
+          retention-days: 7

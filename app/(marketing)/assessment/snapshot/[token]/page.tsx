@@ -6,7 +6,7 @@ import { getProgram } from "@/lib/programs";
 import Snapshot, { type SnapshotCard } from "@/components/Snapshot";
 
 // Tokenised and personal — never index it.
-export const metadata: Metadata = { robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Your Health Snapshot", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
 export default async function SnapshotPage({ params }: { params: Promise<{ token: string }> }) {

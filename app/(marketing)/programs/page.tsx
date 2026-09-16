@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "Nutrition Programmes",
   description:
     "Personalised nutrition programmes for weight, metabolic health, PCOS and thyroid, fitness, gut health and everyday wellness. Consultation, plan, tracking and follow-ups included.",
+  alternates: { canonical: "/programs" },
 };
 
 const includedInAll = [

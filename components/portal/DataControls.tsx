@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 
-export default function DataControls() {
+export default function DataControls({
+  latestRequest,
+}: {
+  latestRequest: { status: "OPEN" | "IN_PROGRESS" | "COMPLETED" | "REJECTED"; requestedAt: string } | null;
+}) {
   const [requesting, setRequesting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,11 +24,11 @@ export default function DataControls() {
         appointments and messages.
       </p>
 
-      {done ? (
+      {done || latestRequest?.status === "OPEN" || latestRequest?.status === "IN_PROGRESS" ? (
         <p className="mt-2 rounded-xl bg-[var(--tint)] px-4 py-3 text-[14px] leading-relaxed text-[var(--ink-2)]">
-          Your request has been recorded and sent to the clinic. They&rsquo;ll be in touch about what
-          happens next, including anything that has to be kept for clinical record-keeping and for
-          how long.
+          Your deletion request {latestRequest?.status === "IN_PROGRESS" ? "is being reviewed" : "has been recorded"}.
+          The clinic will contact you about what happens next, including anything that must be kept
+          for clinical record-keeping and for how long.
         </p>
       ) : (
         <button

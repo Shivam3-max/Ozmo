@@ -16,7 +16,7 @@ export default function DietitianPage() {
       <Section className="border-b border-[var(--line)]" backdrop="both">
         <div className="grid items-center gap-14 lg:grid-cols-[0.8fr_1.2fr]">
           <div className="aspect-[4/5] overflow-hidden rounded-2xl bg-[var(--tint)]">
-            <svg viewBox="0 0 320 400" className="h-full w-full" role="img" aria-label="Portrait placeholder">
+            <svg viewBox="0 0 320 400" className="h-full w-full" role="img" aria-label="Dietitian portrait illustration">
               <rect width="320" height="400" fill="#F2F6F7" />
               <circle cx="160" cy="150" r="62" fill="#0F2E3D" opacity="0.1" />
               <path d="M52 400c0-62 48-108 108-108s108 46 108 108z" fill="#0F2E3D" opacity="0.1" />
@@ -35,9 +35,9 @@ export default function DietitianPage() {
             </p>
             <div className="mt-9 rounded-2xl border-l-[3px] border-[var(--watch)] bg-[var(--tint)] px-6 py-5">
               <p className="text-[14.5px] leading-relaxed text-[var(--ink-2)]">
-                <strong className="text-[var(--ink)]">Profile in preparation.</strong> Full name,
-                qualifications, registration details and years of practice are being verified before
-                publication. We don&rsquo;t publish credentials we haven&rsquo;t confirmed.
+                <strong className="text-[var(--ink)]">Credentials verified before care.</strong> Your
+                assigned dietitian&rsquo;s name, qualifications and registration details are confirmed
+                during onboarding and before any programme begins.
               </p>
             </div>
             <div className="mt-9 flex flex-wrap gap-3">

@@ -11,3 +11,12 @@ next-env.d.ts
 dev.db*
 *.db
 lib/generated/
+.e2e-mysql/
+
+# playwright
+test-results/
+playwright-report/
+blob-report/
+
+# regression suite mail capture
+smtp.log

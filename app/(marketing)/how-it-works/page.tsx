@@ -4,7 +4,7 @@ import PageHero from "@/components/PageHero";
 import Faq from "@/components/Faq";
 
 export const metadata: Metadata = {
-  title: "How Ozmo Works",
+  title: "How It Works",
   description:
     "See exactly how an Ozmo programme runs: free health assessment, consultation, a personalised plan, daily tracking, scheduled follow-ups and monthly progress reports.",
   alternates: { canonical: "/how-it-works" },
@@ -97,7 +97,7 @@ const faqs = [
   { q: "Is the health assessment really free?", a: "Yes. No payment, no card, no obligation. You get your Snapshot whether or not you book anything." },
   { q: "How is an Ozmo plan different from a diet chart?", a: "A diet chart is a document. An Ozmo plan is a document plus alternatives, plus tracking, plus scheduled reviews, plus revisions when it isn't working, plus a dietitian you can message. The document is the smallest part." },
   { q: "Do I need to download an app?", a: "No. Ozmo runs in your browser. On a phone you can add it to your home screen and it behaves like an app, without an app store download." },
-  { q: "What if I forget to log?", a: "You'll get a gentle reminder, not a lecture. Missing a day doesn't break anything — a missing fortnight is worth a conversation." },
+  { q: "What if I forget to log?", a: "Nothing breaks — just pick up with your next meal. Your score counts the days you log, not a perfect streak. A missed day is normal; if a fortnight slips by, message your dietitian and adjust the plan together." },
   { q: "Can my dietitian see everything I log?", a: "Yes. That's the point. They see your meals, your water, your weight and your adherence, so follow-ups are based on what actually happened rather than what you remember." },
   { q: "What happens when my programme ends?", a: "You keep access to your reports and history. Most people move to a maintenance plan — lighter, cheaper, monthly — because the goal was never to finish, it was to keep it." },
 ];

@@ -1,48 +1,22 @@
 import { NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
-import { prisma } from "@/lib/db";
-import { getSession, isStaff } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { z } from "zod";
+import { authorize } from "@/lib/auth";
+import { apiHandler } from "@/lib/api";
+import { issueClientLink } from "@/lib/services/portal-access";
 
 export const runtime = "nodejs";
 
-const INVITE_DAYS = 14;
+const schema = z.object({
+  // Required, and deliberate, when the client already has a password.
+  reset: z.boolean().default(false),
+});
 
-export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session || !isStaff(session.role)) {
-    return NextResponse.json({ error: "Not authorised." }, { status: 401 });
-  }
+export const POST = apiHandler(async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await authorize("portal.invite");
+  const parsed = schema.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 422 });
 
   const { id } = await ctx.params;
-  const client = await prisma.client.findFirst({
-    where: { id, clinicId: CLINIC_ID },
-    include: { user: true },
-  });
-  if (!client) return NextResponse.json({ error: "Client not found." }, { status: 404 });
-
-  const token = randomBytes(24).toString("base64url");
-  await prisma.user.update({
-    where: { id: client.userId },
-    data: {
-      inviteToken: token,
-      inviteExpiresAt: new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000),
-    },
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      clinicId: CLINIC_ID, actorId: session.sub, action: "PORTAL_INVITE_ISSUED",
-      entityType: "Client", entityId: id,
-    },
-  });
-
-  // Returned rather than sent — no mail or WhatsApp provider is wired yet, so
-  // staff copy the link and send it themselves.
-  return NextResponse.json({
-    ok: true,
-    path: `/portal/setup/${token}`,
-    expiresInDays: INVITE_DAYS,
-    hasPassword: Boolean(client.user.passwordHash),
-  });
-}
+  const result = await issueClientLink(session, id, { reset: parsed.data.reset });
+  return NextResponse.json({ ok: true, ...result });
+});

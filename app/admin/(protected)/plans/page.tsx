@@ -1,36 +1,42 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff, canEditPlans } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { asStrings } from "@/lib/json";
 import { PageTitle, Panel, Flag, Empty, th, td, timeAgo } from "@/components/admin/ui";
+import { pageFrom, pageInfo, paging } from "@/lib/pagination";
+import Pager from "@/components/admin/Pager";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 30;
 
 export default async function PlansPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cat?: string; q?: string }>;
+  searchParams: Promise<{ cat?: string; q?: string; page?: string }>;
 }) {
   const user = await requireStaff();
-  const { cat = "", q = "" } = await searchParams;
-  if (!canEditPlans(user.role)) {
+  const { cat = "", q = "", page: rawPage } = await searchParams;
+  const page = pageFrom(rawPage);
+  if (!can(user.role, "plans.edit")) {
     return <Panel className="px-6 py-8"><p className="text-[15px] text-[var(--ink-2)]">Plans aren&rsquo;t part of your role&rsquo;s access.</p></Panel>;
   }
 
-  const [plans, templates] = await Promise.all([
+  const [planTotal, plans, templates] = await Promise.all([
+    prisma.dietPlan.count({ where: { client: { clinicId: user.clinicId } } }),
     prisma.dietPlan.findMany({
-      where: { client: { clinicId: CLINIC_ID } },
+      where: { client: { clinicId: user.clinicId } },
       orderBy: { updatedAt: "desc" },
-      take: 100,
+      ...paging(page, PAGE_SIZE),
       include: { client: { include: { user: true } }, _count: { select: { days: true } } },
     }),
-    prisma.planTemplate.findMany({ where: { clinicId: CLINIC_ID }, orderBy: { name: "asc" } }),
+    prisma.planTemplate.findMany({ where: { clinicId: user.clinicId }, orderBy: { name: "asc" } }),
   ]);
 
   return (
     <>
-      <PageTitle title="Diet plans" sub={`${templates.length} templates · ${plans.length} client plans`} />
+      <PageTitle title="Diet plans" sub={`${templates.length} templates · ${planTotal} client plans`} />
 
       {/* templates, grouped by the category tag */}
       {(() => {
@@ -173,6 +179,7 @@ export default async function PlansPage({
           </div>
         )}
       </Panel>
+      <Pager info={pageInfo(page, PAGE_SIZE, planTotal)} base="/admin/plans" params={{ cat: cat || undefined, q: q || undefined }} noun="client plans" />
     </>
   );
 }

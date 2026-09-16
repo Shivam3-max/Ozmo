@@ -1,16 +1,21 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff, canSeeHealthData } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { asStrings } from "@/lib/json";
 import { getProgram } from "@/lib/programs";
 import { PageTitle, Panel, Flag, Empty, timeAgo } from "@/components/admin/ui";
+import { formatPhone } from "@/lib/phone";
+import { pageFrom, pageInfo, paging } from "@/lib/pagination";
+import Pager from "@/components/admin/Pager";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
-export default async function AssessmentsPage() {
+const PAGE_SIZE = 40;
+
+export default async function AssessmentsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const user = await requireStaff();
-  if (!canSeeHealthData(user.role)) {
+  if (!can(user.role, "health.read")) {
     return (
       <Panel className="px-6 py-8">
         <p className="text-[15px] text-[var(--ink-2)]">
@@ -20,20 +25,26 @@ export default async function AssessmentsPage() {
     );
   }
 
-  const assessments = await prisma.assessment.findMany({
-    where: { lead: { clinicId: CLINIC_ID } },
-    orderBy: { completedAt: "desc" },
-    take: 100,
-    include: { lead: true },
-  });
+  const page = pageFrom((await searchParams).page);
+  const scope = { lead: { clinicId: user.clinicId } };
+  const [total, highReadiness, assessments] = await Promise.all([
+    prisma.assessment.count({ where: scope }),
+    prisma.assessment.count({ where: { ...scope, readiness: { gte: 4 } } }),
+    prisma.assessment.findMany({
+      where: scope,
+      orderBy: { completedAt: "desc" },
+      ...paging(page, PAGE_SIZE),
+      include: { lead: true },
+    }),
+  ]);
+  await prisma.auditLog.create({ data: { clinicId: user.clinicId, actorId: user.sub, action: "ASSESSMENT_LIST_VIEWED", entityType: "Assessment", entityId: "list" } });
 
-  const highReadiness = assessments.filter((a) => a.readiness >= 4).length;
 
   return (
     <>
       <PageTitle
         title="Assessments"
-        sub={`${assessments.length} submitted · ${highReadiness} ready to start now`}
+        sub={`${total} submitted · ${highReadiness} ready to start now`}
       />
 
       {assessments.length === 0 ? (
@@ -65,7 +76,7 @@ export default async function AssessmentsPage() {
                     <p className="tabular mt-1.5 text-[13.5px] text-[var(--ink-2)]">
                       {a.age ? `${a.age}` : "—"}
                       {a.gender ? `${a.gender[0]}` : ""} · {a.weightKg ?? "—"} kg · BMI {a.bmi ?? "—"} ·{" "}
-                      {a.lead?.phone}
+                      {formatPhone(a.lead?.phone)}
                     </p>
                     <p className="mt-2 text-[14px] text-[var(--ink-2)]">
                       <span className="font-semibold text-[var(--ink)]">{a.goal ?? "No goal set"}</span>
@@ -104,6 +115,7 @@ export default async function AssessmentsPage() {
           })}
         </div>
       )}
+      <Pager info={pageInfo(page, PAGE_SIZE, total)} base="/admin/assessments" params={{}} noun="assessments" />
     </>
   );
 }

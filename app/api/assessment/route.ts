@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { CLINIC_ID } from "@/lib/clinic";
 import { prisma } from "@/lib/db";
-import type { Prisma } from "@/lib/generated/prisma/client";
+import type { Prisma } from "@prisma/client";
 import { assessmentSchema, fieldErrors } from "@/lib/validation";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
-import { CLINIC_ID, POLICY_VERSION, snapshotToken, scoreLead, logLeadActivity, notifyClinic } from "@/lib/leads";
+import { limitByIp } from "@/lib/rate-limit";
+import { POLICY_VERSION, snapshotToken, scoreLead, earlierLeadWithPhone, flagPossibleDuplicate } from "@/lib/leads";
+import { apiHandler } from "@/lib/api";
+import { reportError } from "@/lib/observability";
+import { afterAssessment } from "@/lib/notifications/public-forms";
 import {
   computeBmi,
   buildCards,
@@ -15,9 +19,8 @@ import {
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
-  const ip = clientIp(req.headers);
-  const limit = rateLimit(`assessment:${ip}`, 5, 60 * 60 * 1000);
+export const POST = apiHandler(async function POST(req: Request) {
+  const limit = await limitByIp(req.headers, "assessment", 5, 60 * 60 * 1000);
   if (!limit.ok) {
     return NextResponse.json(
       { error: "Too many submissions. Please try again shortly." },
@@ -59,99 +62,78 @@ export async function POST(req: Request) {
   const readiness = readinessIndex + 1;
 
   const token = snapshotToken();
+  const num = (v: unknown) => (v === undefined || v === "" ? null : Number(v));
 
   try {
-    // Someone who books first and takes the assessment afterwards is one person,
-    // not two leads. Reuse the existing record for this phone.
-    const existing = await prisma.lead.findFirst({
-      where: { clinicId: CLINIC_ID, phone: contact.phone },
-      orderBy: { createdAt: "desc" },
-      include: { assessment: true },
-    });
+    // Anonymous submissions never edit an existing record — anyone can type a
+    // phone number. A match is linked for staff to review instead.
+    const lead = await prisma.$transaction(async (tx) => {
+      const earlier = await earlierLeadWithPhone(tx, contact.phone);
 
-    const leadFields = {
-      name: String(a.name ?? "").trim() || existing?.name || "Unnamed",
-      email: contact.email,
-      city: contact.city || null,
-      goal: a.goal ? String(a.goal) : null,
-      conditions,
-      readiness,
-      requiresMedicalCaution: caution,
-      score: scoreLead({
-        readiness,
-        conditionCount: conditions.filter((c) => c !== "None of these").length,
-        hasGoal: Boolean(a.goal) && a.goal !== "Not sure yet",
-        hasReports: a.bloodTests === "Yes, and I have the reports",
-      }),
-      consentMarketing: contact.consentMarketing,
-      consentAt: new Date(),
-      policyVersion: POLICY_VERSION,
-    };
-
-    const assessmentFields = {
-      token,
-      responses: answers as Prisma.InputJsonValue,
-      age: a.age ? Number(a.age) : null,
-      gender: a.gender ? String(a.gender) : null,
-      heightCm: a.height ? Number(a.height) : null,
-      weightKg: a.weight ? Number(a.weight) : null,
-      bmi,
-      goal: a.goal ? String(a.goal) : null,
-      activityLevel: a.activity ? String(a.activity) : null,
-      conditions,
-      foodPreference: a.foodPreference ? String(a.foodPreference) : null,
-      readiness,
-      snapshotCards: cards as unknown as Prisma.InputJsonValue,
-      snapshotFocus: focus as unknown as Prisma.InputJsonValue,
-      recommendedProgram: program.slug,
-      requiresMedicalCaution: caution,
-      completedAt: new Date(),
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    };
-
-    let lead;
-    if (existing) {
-      lead = await prisma.lead.update({
-        where: { id: existing.id },
-        data: {
-          ...leadFields,
-          // never drag a lead backwards through the pipeline on a retake
-          stage: existing.stage === "NEW" ? "NEW" : existing.stage,
-          assessment: existing.assessment
-            ? { update: assessmentFields }
-            : { create: assessmentFields },
-        },
-      });
-    } else {
-      lead = await prisma.lead.create({
+      const created = await tx.lead.create({
         data: {
           clinicId: CLINIC_ID,
           phone: contact.phone,
           source: "ASSESSMENT",
           stage: "NEW",
+          name: String(a.name ?? "").trim() || "Unnamed",
+          email: contact.email,
+          city: contact.city || null,
+          goal: a.goal ? String(a.goal) : null,
+          conditions,
+          readiness,
+          requiresMedicalCaution: caution,
+          score: scoreLead({
+            readiness,
+            conditionCount: conditions.filter((c) => c !== "None of these").length,
+            hasGoal: Boolean(a.goal) && a.goal !== "Not sure yet",
+            hasReports: a.bloodTests === "Yes, and I have the reports",
+          }),
           consentService: true,
-          ...leadFields,
-          assessment: { create: assessmentFields },
+          consentMarketing: contact.consentMarketing,
+          consentAt: new Date(),
+          policyVersion: POLICY_VERSION,
+          duplicateOfLeadId: earlier?.id ?? null,
+          assessment: {
+            create: {
+              token,
+              responses: answers as Prisma.InputJsonValue,
+              age: num(a.age),
+              gender: a.gender ? String(a.gender) : null,
+              heightCm: num(a.height),
+              weightKg: num(a.weight),
+              bmi,
+              goal: a.goal ? String(a.goal) : null,
+              activityLevel: a.activity ? String(a.activity) : null,
+              conditions,
+              foodPreference: a.foodPreference ? String(a.foodPreference) : null,
+              readiness,
+              snapshotCards: cards as unknown as Prisma.InputJsonValue,
+              snapshotFocus: focus as unknown as Prisma.InputJsonValue,
+              recommendedProgram: program.slug,
+              requiresMedicalCaution: caution,
+              completedAt: new Date(),
+              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            },
+          },
         },
       });
-    }
 
-    await logLeadActivity(
-      lead.id,
-      existing ? "ASSESSMENT_RETAKEN" : "ASSESSMENT_SUBMITTED",
-      `Score ${lead.score}, readiness ${readiness}/5`
-    );
-    await notifyClinic(
-      `New assessment — ${lead.name}${caution ? " (MEDICAL CAUTION)" : ""}`,
-      `${lead.name} · ${lead.phone} · score ${lead.score}\nGoal: ${lead.goal ?? "—"}\nConditions: ${conditions.join(", ") || "none"}`
-    );
+      await tx.leadActivity.create({
+        data: { leadId: created.id, type: "ASSESSMENT_SUBMITTED", note: `Score ${created.score}, readiness ${readiness}/5` },
+      });
+      if (earlier) await flagPossibleDuplicate(tx, earlier.id, created, "assessment");
+      return created;
+    });
+
+    await afterAssessment({ email: contact.email, token, leadId: lead.id, caution });
 
     return NextResponse.json({ ok: true, token }, { status: 201 });
   } catch (err) {
-    console.error("[ozmo] assessment save failed", err);
+    await reportError(err, { source: "api", method: "POST", path: "/api/assessment" });
     return NextResponse.json(
       { error: "We couldn't save your answers. Please try again in a moment." },
       { status: 500 }
     );
   }
-}
+});

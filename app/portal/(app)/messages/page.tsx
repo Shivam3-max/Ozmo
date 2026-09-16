@@ -6,7 +6,7 @@ import MessageThread from "@/components/portal/MessageThread";
 export const dynamic = "force-dynamic";
 
 export default async function MessagesPage() {
-  const session = await getSession();
+  const session = await getSession("client");
   const client = await currentClient();
   if (!client || !session) return null;
 

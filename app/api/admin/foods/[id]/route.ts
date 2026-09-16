@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession, canEditPlans } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { authorize } from "@/lib/auth";
 import { foodSchema } from "@/lib/food-schema";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -13,11 +13,8 @@ const patchSchema = z.union([
   z.object({ isVerified: z.boolean(), _mode: z.literal("verify") }),
 ]);
 
-export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session || !canEditPlans(session.role)) {
-    return NextResponse.json({ error: "Not authorised." }, { status: 401 });
-  }
+export const PATCH = apiHandler(async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await authorize("foods.edit");
 
   const { id } = await ctx.params;
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
@@ -25,7 +22,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "Please check the values." }, { status: 422 });
   }
 
-  const existing = await prisma.food.findFirst({ where: { id, OR: [{ clinicId: CLINIC_ID }, { clinicId: null }] } });
+  const existing = await prisma.food.findFirst({ where: { id, clinicId: session.clinicId } });
   if (!existing) return NextResponse.json({ error: "Item not found." }, { status: 404 });
 
   const { _mode, ...data } = parsed.data as Record<string, unknown> & { _mode?: string };
@@ -37,23 +34,20 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   await prisma.auditLog.create({
     data: {
-      clinicId: CLINIC_ID, actorId: session.sub,
+      clinicId: session.clinicId, actorId: session.sub,
       action: _mode === "verify" ? "FOOD_VERIFIED" : "FOOD_UPDATED",
       entityType: "Food", entityId: id, changes: { name: food.name },
     },
   });
 
   return NextResponse.json({ ok: true, isVerified: food.isVerified });
-}
+});
 
-export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session || !canEditPlans(session.role)) {
-    return NextResponse.json({ error: "Not authorised." }, { status: 401 });
-  }
+export const DELETE = apiHandler(async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await authorize("foods.edit");
 
   const { id } = await ctx.params;
-  const food = await prisma.food.findFirst({ where: { id, OR: [{ clinicId: CLINIC_ID }, { clinicId: null }] } });
+  const food = await prisma.food.findFirst({ where: { id, clinicId: session.clinicId } });
   if (!food) return NextResponse.json({ error: "Item not found." }, { status: 404 });
 
   // Deleting a food that a published plan points at would silently gut the plan.
@@ -68,10 +62,10 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   await prisma.food.delete({ where: { id } });
   await prisma.auditLog.create({
     data: {
-      clinicId: CLINIC_ID, actorId: session.sub, action: "FOOD_DELETED",
+      clinicId: session.clinicId, actorId: session.sub, action: "FOOD_DELETED",
       entityType: "Food", entityId: id, changes: { name: food.name },
     },
   });
 
   return NextResponse.json({ ok: true });
-}
+});

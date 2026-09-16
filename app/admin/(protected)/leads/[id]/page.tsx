@@ -1,29 +1,32 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff, canSeeHealthData } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { asObject, asStrings, asArray } from "@/lib/json";
 import { getProgram } from "@/lib/programs";
 import { questions } from "@/lib/assessment";
 import { PageTitle, Panel, StageTag, Flag, td, th, timeAgo } from "@/components/admin/ui";
 import StageControl from "@/components/admin/StageControl";
 import ConvertLead from "@/components/admin/ConvertLead";
+import { formatPhone } from "@/lib/phone";
+import ScheduleAppointment from "@/components/admin/ScheduleAppointment";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireStaff();
-  const showHealth = canSeeHealthData(user.role);
+  const showHealth = can(user.role, "health.read");
   const { id } = await params;
 
   const programs = await prisma.program.findMany({
-    where: { clinicId: "ozmo", isActive: true },
+    where: { clinicId: user.clinicId, isActive: true },
     orderBy: { order: "asc" },
     select: { slug: true, name: true, durations: true },
   });
 
-  const lead = await prisma.lead.findUnique({
-    where: { id },
+  const lead = await prisma.lead.findFirst({
+    where: { id, clinicId: user.clinicId },
     include: {
       assessment: true,
       activities: { orderBy: { createdAt: "desc" } },
@@ -31,6 +34,22 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     },
   });
   if (!lead) notFound();
+
+  // Public forms never merge on phone number; staff see the matches and decide.
+  const [earlierLead, laterLeads] = await Promise.all([
+    lead.duplicateOfLeadId
+      ? prisma.lead.findFirst({ where: { id: lead.duplicateOfLeadId, clinicId: user.clinicId }, select: { id: true, name: true, stage: true } })
+      : null,
+    prisma.lead.findMany({
+      where: { duplicateOfLeadId: lead.id, clinicId: user.clinicId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true, source: true, createdAt: true },
+      take: 20,
+    }),
+  ]);
+  if (showHealth && lead.assessment) {
+    await prisma.auditLog.create({ data: { clinicId: user.clinicId, actorId: user.sub, action: "ASSESSMENT_VIEWED", entityType: "Lead", entityId: id } });
+  }
 
   const a = lead.assessment;
   const responses = asObject<Record<string, unknown>>(a?.responses);
@@ -50,17 +69,45 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
 
       <PageTitle
         title={lead.name}
-        sub={`${lead.phone}${lead.email ? ` · ${lead.email}` : ""}${lead.city ? ` · ${lead.city}` : ""}`}
+        sub={`${formatPhone(lead.phone)}${lead.email ? ` · ${lead.email}` : ""}${lead.city ? ` · ${lead.city}` : ""}`}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <StageTag stage={lead.stage} />
             {showHealth && lead.requiresMedicalCaution && <Flag tone="alert">medical caution</Flag>}
-            <span className="tabular rounded-full bg-[var(--ink)] px-3 py-1 text-[12px] font-bold text-white">
+            {showHealth && <span className="tabular rounded-full bg-[var(--ink)] px-3 py-1 text-[12px] font-bold text-white">
               score {lead.score}
-            </span>
+            </span>}
           </div>
         }
       />
+
+      {(earlierLead || laterLeads.length > 0) && (
+        <Panel className="mb-6 border-[var(--watch)]/30 bg-[var(--watch)]/6 px-6 py-5">
+          <p className="text-[15px] leading-relaxed text-[var(--ink-2)]">
+            <strong className="font-semibold text-[var(--ink)]">Same phone number on another lead.</strong>{" "}
+            A phone number doesn&rsquo;t prove it&rsquo;s the same person, so the website saved each submission
+            separately and changed nothing. Check the details before acting on either.
+          </p>
+          <ul className="mt-3 grid gap-1.5 text-[14px]">
+            {earlierLead && (
+              <li>
+                Earlier:{" "}
+                <Link href={`/admin/leads/${earlierLead.id}`} className="font-semibold text-[var(--accent-text)]">
+                  {earlierLead.name}
+                </Link>{" "}
+                <span className="text-[var(--ink-3)]">· {earlierLead.stage.replace(/_/g, " ").toLowerCase()}</span>
+              </li>
+            )}
+            {laterLeads.map((l) => (
+              <li key={l.id}>
+                Later:{" "}
+                <Link href={`/admin/leads/${l.id}`} className="font-semibold text-[var(--accent-text)]">{l.name}</Link>{" "}
+                <span className="text-[var(--ink-3)]">· {l.source.toLowerCase()} · {timeAgo(l.createdAt)}</span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
 
       {showHealth && lead.requiresMedicalCaution && (
         <Panel className="mb-6 border-[var(--alert)]/30 bg-[var(--alert)]/5 px-6 py-5">
@@ -171,7 +218,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           <Panel>
             <h2 className="border-b border-[var(--line)] px-5 py-3.5 text-[15px] font-semibold">Appointments</h2>
             {lead.appointments.length === 0 ? (
-              <p className="px-5 py-5 text-[14px] text-[var(--ink-3)]">None booked.</p>
+              <p className="px-5 pt-5 text-[14px] text-[var(--ink-3)]">None booked.</p>
             ) : (
               <ul className="divide-y divide-[var(--line-soft)]">
                 {lead.appointments.map((ap) => (
@@ -190,6 +237,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                   </li>
                 ))}
               </ul>
+            )}
+            {!lead.convertedClientId && (
+              <div className="border-t border-[var(--line-soft)] px-5 py-4">
+                <ScheduleAppointment leadId={lead.id} defaultType="INITIAL" />
+              </div>
             )}
           </Panel>
 

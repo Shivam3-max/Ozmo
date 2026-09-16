@@ -86,7 +86,7 @@ export function Flag({ tone, children }: { tone: "alert" | "watch" | "good"; chi
     good: "border-[var(--good)]/30 bg-[var(--good)]/8 text-[var(--good)]",
   };
   return (
-    <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.06em] ${tones[tone]}`}>
+    <span className={`inline-block whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.06em] ${tones[tone]}`}>
       {children}
     </span>
   );

@@ -1,8 +1,7 @@
 import type { MetadataRoute } from "next";
 import { programs } from "@/lib/programs";
 import { conditions } from "@/lib/conditions";
-
-const BASE = "https://ozmodietclinic.com";
+import { absoluteUrl } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
@@ -26,11 +25,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return [
     ...statics.map(([path, priority]) => ({
-      url: `${BASE}${path}`,
+      url: absoluteUrl(path),
       lastModified: now,
       priority,
     })),
-    ...programs.map((p) => ({ url: `${BASE}/programs/${p.slug}`, lastModified: now, priority: 0.8 })),
-    ...conditions.map((c) => ({ url: `${BASE}/conditions/${c.slug}`, lastModified: now, priority: 0.8 })),
+    ...programs.map((p) => ({ url: absoluteUrl(`/programs/${p.slug}`), lastModified: now, priority: 0.8 })),
+    ...conditions.map((c) => ({ url: absoluteUrl(`/conditions/${c.slug}`), lastModified: now, priority: 0.8 })),
   ];
 }

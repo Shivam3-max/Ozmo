@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { questions, steps, mealSlots, type Answers } from "@/lib/assessment";
-
-const STORAGE = "ozmo.assessment.v1";
+import { useRef, useEffect, useMemo, useState } from "react";
+import { questions, steps, mealSlots, answerProblem, TEXT_MAX, TEXTAREA_MAX, MEAL_MAX, type Answers } from "@/lib/assessment";
 
 const goalFromParam: Record<string, string> = {
   "lose-weight": "Lose weight",
@@ -22,50 +20,57 @@ export default function AssessmentFlow() {
   const [answers, setAnswers] = useState<Answers>({});
   const [done, setDone] = useState(false);
   const [contact, setContact] = useState({ email: "", phone: "", city: "", consent: false, marketing: false });
-  const [hydrated, setHydrated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const router = useRouter();
+  const flowTop = useRef<HTMLDivElement>(null);
+  const submitted = useRef(false);
 
-  // restore
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved.answers) setAnswers(saved.answers);
-        if (typeof saved.idx === "number") setIdx(saved.idx);
-        if (saved.started) setStarted(true);
-      }
-    } catch {
-      /* storage unavailable — the flow still works, it just won't resume */
-    }
     const g = params.get("goal");
     if (g && goalFromParam[g]) {
       setAnswers((a) => ({ ...a, goal: goalFromParam[g] }));
       setStarted(true);
     }
-    setHydrated(true);
   }, [params]);
-
-  // persist
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(STORAGE, JSON.stringify({ answers, idx, started }));
-    } catch {
-      /* ignore */
-    }
-  }, [answers, idx, started, hydrated]);
 
   const visible = useMemo(() => questions.filter((q) => !q.showIf || q.showIf(answers)), [answers]);
   const q = visible[idx];
-  const pct = Math.round(((idx + 1) / (visible.length + 1)) * 100);
+  // Counted against the full question list, so the total never jumps when a
+  // follow-up question appears; skipped follow-ups just move the count forward.
+  const position = q ? questions.indexOf(q) + 1 : questions.length;
+  const pct = Math.round((position / (questions.length + 1)) * 100);
+
+  // Each new question starts at the top, clear of the sticky header and progress bar.
+  // (autoFocus would otherwise scroll the input up underneath them on phones.)
+  useEffect(() => {
+    if (!started || done) return;
+    const frame = requestAnimationFrame(() => {
+      const el = flowTop.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY - 72;
+      window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [idx, started, done]);
+
+  // Answers live only in this tab (health details aren't stored on the device),
+  // so warn before a refresh or tab close throws them away.
+  const hasAnswers = Object.keys(answers).length > 0;
+  useEffect(() => {
+    if (!hasAnswers) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      if (!submitted.current) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasAnswers]);
 
   const set = (id: string, v: Answers[string]) => setAnswers((a) => ({ ...a, [id]: v }));
 
+  const problem = q ? answerProblem(q, answers[q.id]) : null;
   const answered = (() => {
-    if (!q) return false;
+    if (!q || problem) return false;
     if (q.optional) return true;
     const v = answers[q.id];
     if (Array.isArray(v)) return v.length > 0;
@@ -149,12 +154,12 @@ export default function AssessmentFlow() {
               });
               const data = await res.json().catch(() => ({}));
               if (!res.ok || !data?.token) {
-                setSubmitError(data?.error ?? "We couldn't save your answers. Please try again.");
+                const firstField = data?.fields ? Object.values(data.fields as Record<string, string>)[0] : null;
+                setSubmitError(firstField ? `${data.error} ${firstField}` : data?.error ?? "We couldn't save your answers. Please try again.");
                 setSubmitting(false);
                 return;
               }
-              // The answers are safely stored now, so the local draft can go.
-              try { localStorage.removeItem(STORAGE); } catch {}
+              submitted.current = true;
               router.push(`/assessment/snapshot/${data.token}`);
             } catch {
               setSubmitError("We couldn't reach the server. Please check your connection and try again.");
@@ -246,15 +251,15 @@ export default function AssessmentFlow() {
   const firstOfStep = visible.findIndex((v) => v.step === q.step) === idx;
 
   return (
-    <div className="relative mx-auto w-full max-w-[760px] px-6 py-12 md:py-16">
+    <div ref={flowTop} className="relative mx-auto w-full max-w-[760px] px-6 py-12 md:py-16">
       {/* progress */}
       <div className="sticky top-[72px] z-10 -mx-6 mb-10 bg-[var(--ground)] px-6 pb-4 pt-3">
         <div className="flex items-baseline justify-between text-[13px] text-[var(--ink-3)]">
           <span className="font-bold uppercase tracking-[0.1em]">
             Step {q.step} of 7 · {step.title}
           </span>
-          <span className="tabular">
-            {idx + 1} / {visible.length}
+          <span className="tabular" aria-label={`Question ${position} of ${questions.length}`}>
+            {position} / {questions.length}
           </span>
         </div>
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--line-soft)]">
@@ -267,8 +272,8 @@ export default function AssessmentFlow() {
 
       {firstOfStep && <p className="mb-6 text-[15.5px] italic text-[var(--ink-2)]">{step.intro}</p>}
 
-      <h1 className="text-[clamp(28px,4.2vw,44px)] leading-[1.04]">{q.label}</h1>
-      {q.helper && <p className="mt-3 text-[15.5px] leading-relaxed text-[var(--ink-2)]">{q.helper}</p>}
+      <h1 id={`q-${q.id}`} className="text-[clamp(28px,4.2vw,44px)] leading-[1.04]">{q.label}</h1>
+      {q.helper && <p id={`q-${q.id}-help`} className="mt-3 text-[15.5px] leading-relaxed text-[var(--ink-2)]">{q.helper}</p>}
 
       <div className="mt-8">
         {/* text / number */}
@@ -279,7 +284,10 @@ export default function AssessmentFlow() {
             min={q.min}
             max={q.max}
             autoFocus
+            aria-labelledby={`q-${q.id}`}
+            aria-describedby={q.helper ? `q-${q.id}-help` : undefined}
             placeholder={q.placeholder}
+            maxLength={q.type === "text" ? TEXT_MAX : undefined}
             value={(answers[q.id] as string) || ""}
             onChange={(e) => set(q.id, e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && answered) next(); }}
@@ -294,13 +302,15 @@ export default function AssessmentFlow() {
               type="number"
               inputMode="numeric"
               autoFocus
+              aria-labelledby={`q-${q.id}`}
+              aria-describedby={`q-${q.id}-unit`}
               placeholder={q.type === "height" ? "e.g. 168" : "e.g. 78"}
               value={(answers[q.id] as string) || ""}
               onChange={(e) => set(q.id, e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && answered) next(); }}
               className="min-h-[60px] w-[190px] rounded-xl border border-[var(--line)] bg-[var(--paper)] px-5 text-[19px]"
             />
-            <span className="text-[16px] font-medium text-[var(--ink-2)]">
+            <span id={`q-${q.id}-unit`} className="text-[16px] font-medium text-[var(--ink-2)]">
               {q.type === "height" ? "cm" : "kg"}
             </span>
           </div>
@@ -311,7 +321,10 @@ export default function AssessmentFlow() {
           <textarea
             rows={q.id === "blocker" ? 6 : 3}
             autoFocus
+            aria-labelledby={`q-${q.id}`}
+            aria-describedby={q.helper ? `q-${q.id}-help` : undefined}
             placeholder={q.placeholder}
+            maxLength={TEXTAREA_MAX}
             value={(answers[q.id] as string) || ""}
             onChange={(e) => set(q.id, e.target.value)}
             className="w-full rounded-xl border border-[var(--line)] bg-[var(--paper)] p-5 text-[16.5px] leading-relaxed"
@@ -320,19 +333,36 @@ export default function AssessmentFlow() {
 
         {/* single */}
         {q.type === "single" && (
-          <div className="grid gap-2.5">
-            {q.options!.map((o) => {
+          <div
+            role="radiogroup"
+            aria-labelledby={`q-${q.id}`}
+            className="grid gap-2.5"
+            onKeyDown={(e) => {
+              // Arrow keys move between options, as in a native radio group.
+              if (!["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(e.key)) return;
+              e.preventDefault();
+              const radios = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=radio]"));
+              const at = radios.indexOf(document.activeElement as HTMLButtonElement);
+              const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : -1;
+              radios[(at + step + radios.length) % radios.length]?.focus();
+            }}
+          >
+            {q.options!.map((o, oi) => {
               const on = answers[q.id] === o;
+              const selected = q.options!.some((x) => answers[q.id] === x);
               return (
                 <button
                   key={o}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  tabIndex={on || (!selected && oi === 0) ? 0 : -1}
                   onClick={() => { set(q.id, o); setTimeout(() => (idx < visible.length - 1 ? setIdx(idx + 1) : setDone(true)), 160); }}
                   className={`rounded-xl border px-6 py-4.5 text-left text-[17px] transition-all duration-150 hover:-translate-y-0.5 ${
                     on
                       ? "border-[var(--ink)] bg-[var(--accent)]/15 font-semibold"
                       : "border-[var(--line)] bg-[var(--paper)] hover:border-[var(--ink)]"
                   }`}
-                  aria-pressed={on}
                 >
                   {o}
                 </button>
@@ -345,20 +375,22 @@ export default function AssessmentFlow() {
         {q.type === "multi" && (
           <>
             <p className="mb-4 text-[14px] text-[var(--ink-3)]">Choose as many as apply.</p>
-            <div className="grid gap-2.5 sm:grid-cols-2">
+            <div role="group" aria-labelledby={`q-${q.id}`} className="grid gap-2.5 sm:grid-cols-2">
               {q.options!.map((o) => {
                 const cur = Array.isArray(answers[q.id]) ? (answers[q.id] as string[]) : [];
                 const on = cur.includes(o);
                 return (
                   <button
                     key={o}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
                     onClick={() => toggleMulti(q.id, o, q.exclusive)}
                     className={`rounded-xl border px-5 py-4 text-left text-[16px] transition-all duration-150 hover:-translate-y-0.5 ${
                       on
                         ? "border-[var(--ink)] bg-[var(--accent)]/15 font-semibold"
                         : "border-[var(--line)] bg-[var(--paper)] hover:border-[var(--ink)]"
                     }`}
-                    aria-pressed={on}
                   >
                     {o}
                   </button>
@@ -381,6 +413,7 @@ export default function AssessmentFlow() {
                   <input
                     type="text"
                     placeholder="Roughly what, and roughly when"
+                    maxLength={MEAL_MAX}
                     value={cur[m.id] || ""}
                     onChange={(e) => set(q.id, { ...cur, [m.id]: e.target.value })}
                     className="min-h-[54px] rounded-xl border border-[var(--line)] bg-[var(--paper)] px-4 text-[16px]"
@@ -392,6 +425,10 @@ export default function AssessmentFlow() {
         )}
       </div>
 
+      {problem && (
+        <p role="alert" className="mt-4 text-[15px] text-[var(--alert)]">{problem}</p>
+      )}
+
       {/* nav */}
       <div className="mt-10 flex items-center gap-4 border-t border-[var(--line)] pt-6">
         <button onClick={back} className="text-[15px] text-[var(--ink-2)] hover:text-[var(--ink)]">
@@ -399,7 +436,7 @@ export default function AssessmentFlow() {
         </button>
         <div className="ml-auto flex items-center gap-3">
           {q.optional && (
-            <button onClick={next} className="text-[15px] text-[var(--ink-3)] hover:text-[var(--ink)]">
+            <button onClick={() => { set(q.id, ""); next(); }} className="text-[15px] text-[var(--ink-3)] hover:text-[var(--ink)]">
               Skip
             </button>
           )}

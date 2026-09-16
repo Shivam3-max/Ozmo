@@ -1,16 +1,51 @@
 import { z } from "zod";
+import { questions, answerProblem } from "@/lib/assessment";
+import { normalizePhone } from "@/lib/phone";
 
-const phone = z
+/** Accepts the ways people type a number; outputs the one stored form (+919888877777). */
+export const phoneSchema = z
   .string()
   .trim()
-  .min(8, "Please enter a valid phone number")
-  .max(20)
-  .regex(/^[+\d][\d\s\-()]{7,19}$/, "Please enter a valid phone number");
+  .min(1, "Please enter a phone number")
+  .transform((value, ctx) => {
+    const normalized = normalizePhone(value);
+    if (!normalized) {
+      ctx.addIssue({ code: "custom", message: "Please enter a valid phone number, with the country code if it isn't Indian" });
+      return z.NEVER;
+    }
+    return normalized;
+  });
+
+const phone = phoneSchema;
+
+/** A date or date-time string that actually parses; empty means "not given". */
+export const dateInputSchema = z
+  .string()
+  .trim()
+  .max(40)
+  .refine((v) => v === "" || !Number.isNaN(new Date(v).getTime()), "Enter a valid date");
 
 const name = z.string().trim().min(1, "Please tell us your name").max(120);
 
+const questionById = new Map(questions.map((q) => [q.id, q]));
+
+const assessmentAnswers = z.record(z.string(), z.unknown()).superRefine((answers, ctx) => {
+  for (const [key, value] of Object.entries(answers)) {
+    const q = questionById.get(key);
+    if (!q) {
+      ctx.addIssue({ code: "custom", path: [key], message: "Unknown assessment answer." });
+      continue;
+    }
+    const problem = answerProblem(q, value);
+    if (problem) ctx.addIssue({ code: "custom", path: [key], message: problem });
+  }
+  if (JSON.stringify(answers).length > 50_000) {
+    ctx.addIssue({ code: "custom", message: "Assessment is too large." });
+  }
+});
+
 export const assessmentSchema = z.object({
-  answers: z.record(z.string(), z.unknown()),
+  answers: assessmentAnswers,
   contact: z.object({
     email: z.string().trim().email("Please enter a valid email").max(200),
     phone,
@@ -18,16 +53,15 @@ export const assessmentSchema = z.object({
     consentService: z.literal(true, { message: "We need your consent to prepare your snapshot" }),
     consentMarketing: z.boolean().default(false),
   }),
-});
+}).strict();
 
 export const bookingSchema = z.object({
-  type: z.enum(["clinic", "video", "followup"]),
+  type: z.enum(["clinic", "video"]),
   date: z.string().trim().min(1, "Please choose a date").max(60),
   time: z.string().trim().min(1, "Please choose a time").max(20),
   name,
   phone,
   email: z.string().trim().email("Please enter a valid email").max(200),
-  age: z.coerce.number().int().min(13, "Please enter your age").max(100),
   reason: z.string().trim().min(1, "Please choose a reason").max(120),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
   acceptTerms: z.literal(true, { message: "Please accept the terms to continue" }),

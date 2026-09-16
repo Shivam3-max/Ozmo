@@ -5,7 +5,7 @@ import { requireClient } from "@/lib/auth";
 import PortalShell from "@/components/portal/Shell";
 
 export const metadata: Metadata = {
-  title: "Your Ozmo dashboard",
+  title: "Your Dashboard",
   robots: { index: false, follow: false },
 };
 

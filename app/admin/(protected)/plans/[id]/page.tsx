@@ -1,25 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff, canEditPlans } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { asStrings } from "@/lib/json";
 import { suggestTargets } from "@/lib/clients";
 import { uid, type PlanDraft } from "@/lib/plan-types";
 import PlanBuilder from "@/components/admin/PlanBuilder";
 import { Panel } from "@/components/admin/ui";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlanBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireStaff();
-  if (!canEditPlans(user.role)) {
+  if (!can(user.role, "plans.edit")) {
     return <Panel className="px-6 py-8"><p className="text-[15px] text-[var(--ink-2)]">Plans aren&rsquo;t part of your role&rsquo;s access.</p></Panel>;
   }
 
   const { id } = await params;
   const plan = await prisma.dietPlan.findFirst({
-    where: { id, client: { clinicId: CLINIC_ID } },
+    where: { id, client: { clinicId: user.clinicId } },
     include: {
       days: { orderBy: { index: "asc" }, include: { slots: { orderBy: { order: "asc" }, include: { items: { orderBy: { order: "asc" } } } } } },
       sections: { orderBy: { order: "asc" } },
@@ -36,11 +36,11 @@ export default async function PlanBuilderPage({ params }: { params: Promise<{ id
 
   const [library, templates] = await Promise.all([
     prisma.food.findMany({
-      where: { OR: [{ clinicId: CLINIC_ID }, { clinicId: null }] },
+      where: { clinicId: user.clinicId },
       orderBy: [{ category: "asc" }, { name: "asc" }],
       select: { id: true, name: true, category: true, servingUnit: true, defaultType: true },
     }),
-    prisma.planTemplate.findMany({ where: { clinicId: CLINIC_ID }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.planTemplate.findMany({ where: { clinicId: user.clinicId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
 
   const c = plan.client;
@@ -100,6 +100,8 @@ export default async function PlanBuilderPage({ params }: { params: Promise<{ id
 
       <PlanBuilder
         planId={plan.id}
+        status={plan.status}
+        updatedAt={plan.updatedAt.toISOString()}
         initial={draft}
         client={{
           id: c.id,

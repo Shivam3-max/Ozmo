@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession, canSeeHealthData } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { authorize } from "@/lib/auth";
+import { apiHandler } from "@/lib/api";
+import { dateInputSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,7 @@ const optional = (max: number) =>
   z.union([z.coerce.number().min(0).max(max), z.literal("")]).optional().nullable();
 
 const schema = z.object({
-  date: z.string().optional(),
+  date: dateInputSchema.optional(),
   weightKg: optional(400),
   waistCm: optional(250),
   hipCm: optional(250),
@@ -20,17 +21,14 @@ const schema = z.object({
   note: z.string().trim().max(500).optional().or(z.literal("")),
 });
 
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session || !canSeeHealthData(session.role)) {
-    return NextResponse.json({ error: "Not authorised." }, { status: 401 });
-  }
+export const POST = apiHandler(async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await authorize("measurements.record");
 
   const { id } = await ctx.params;
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Please check the values." }, { status: 422 });
 
-  const client = await prisma.client.findFirst({ where: { id, clinicId: CLINIC_ID } });
+  const client = await prisma.client.findFirst({ where: { id, clinicId: session.clinicId } });
   if (!client) return NextResponse.json({ error: "Client not found." }, { status: 404 });
 
   const d = parsed.data;
@@ -56,10 +54,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   await prisma.auditLog.create({
     data: {
-      clinicId: CLINIC_ID, actorId: session.sub, action: "MEASUREMENT_ADDED",
+      clinicId: session.clinicId, actorId: session.sub, action: "MEASUREMENT_ADDED",
       entityType: "Client", entityId: id, changes: { weightKg: m.weightKg },
     },
   });
 
   return NextResponse.json({ ok: true }, { status: 201 });
-}
+});

@@ -1,19 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { normalizePhone } from "@/lib/phone";
+import { apiFields, FieldError, useFieldErrors } from "./FieldErrors";
 
 const types = [
   { id: "clinic", name: "In-clinic consultation", desc: "At our clinic — the full works, with measurements taken in person." },
   { id: "video", name: "Online video consultation", desc: "From wherever you are. Same programme, same plan, same dashboard." },
-  { id: "followup", name: "Follow-up consultation", desc: "For existing clients. Log in to use the follow-ups included in your programme." },
 ];
 
 const slots = ["10:00", "10:45", "11:30", "12:15", "15:00", "15:45", "16:30", "17:15", "18:00"];
-const unavailable = new Set(["11:30", "15:45", "18:00"]);
-
 const labelCls = "text-[13px] font-bold uppercase tracking-[0.08em] text-[var(--ink-3)]";
-const fieldCls = "min-h-[50px] rounded-lg border border-[var(--line)] bg-[var(--paper)] px-4 text-[16px]";
+const fieldCls = "min-h-[50px] rounded-lg border border-[var(--line)] bg-[var(--paper)] px-4 text-[16px] aria-[invalid=true]:border-[var(--alert)]";
+const ORDER = ["name", "phone", "email", "reason", "notes", "acceptTerms", "acceptDisclaimer"];
+const PHONE_HINT = "Please enter a valid phone number, with the country code if it isn't Indian";
 
 function nextDays(n: number) {
   const out: Date[] = [];
@@ -25,7 +26,11 @@ function nextDays(n: number) {
   return out;
 }
 
-type Details = { name: string; phone: string; email: string; age: string; reason: string; notes: string };
+function dateKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+type Details = { name: string; phone: string; email: string; reason: string; notes: string };
 
 export default function BookingForm() {
   const [type, setType] = useState("clinic");
@@ -34,12 +39,28 @@ export default function BookingForm() {
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [details, setDetails] = useState<Details>({ name: "", phone: "", email: "", age: "", reason: "", notes: "" });
+  const [details, setDetails] = useState<Details>({ name: "", phone: "", email: "", reason: "", notes: "" });
   const [terms, setTerms] = useState(false);
   const [disclaimer, setDisclaimer] = useState(false);
+  const [unavailable, setUnavailable] = useState<Set<string>>(new Set());
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [availabilityVersion, setAvailabilityVersion] = useState(0);
   const days = nextDays(8);
+  const errors = useFieldErrors("booking", ORDER);
 
-  const set = <K extends keyof Details>(k: K, v: Details[K]) => setDetails((d) => ({ ...d, [k]: v }));
+  useEffect(() => {
+    if (!day) return;
+    fetch(`/api/booking?date=${encodeURIComponent(day)}`)
+      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((data) => setUnavailable(new Set(Array.isArray(data.booked) ? data.booked : [])))
+      .catch(() => setUnavailable(new Set(slots)))
+      .finally(() => setLoadingSlots(false));
+  }, [day, availabilityVersion]);
+
+  const set = <K extends keyof Details>(k: K, v: Details[K]) => {
+    setDetails((d) => ({ ...d, [k]: v }));
+    errors.clear(k);
+  };
 
   if (confirmed) {
     return (
@@ -48,7 +69,7 @@ export default function BookingForm() {
         <dl className="mt-6 grid gap-3 border-y border-[var(--line)] py-5 text-[15.5px]">
           {[
             ["Type", types.find((t) => t.id === type)!.name],
-            ["Date", day ?? "—"],
+            ["Date", day ? new Date(`${day}T12:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) : "—"],
             ["Time", slot ? `${slot} IST` : "—"],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between gap-6">
@@ -59,8 +80,8 @@ export default function BookingForm() {
         </dl>
         <h3 className="mt-7 text-[18px]">What happens next</h3>
         <ol className="mt-3 grid list-decimal gap-2 pl-5 text-[15.5px] leading-relaxed text-[var(--ink-2)]">
-          <li>A confirmation is on its way to your WhatsApp and email.</li>
-          <li>If you&rsquo;re consulting online, your video link arrives 30 minutes before.</li>
+          <li>The clinic will contact you to confirm that the requested slot is available.</li>
+          <li>If you&rsquo;re consulting online, we&rsquo;ll email your video-call link once the appointment is confirmed.</li>
           <li>Bring any lab reports from the last six months and a list of your medications.</li>
           <li>
             Haven&rsquo;t done the health assessment yet? It makes the consultation much more useful —{" "}
@@ -80,8 +101,14 @@ export default function BookingForm() {
       onSubmit={async (e) => {
         e.preventDefault();
         if (busy || !day || !slot) return;
-        setBusy(true);
         setError(null);
+        // The browser accepts any text in a tel field; check it the way the server will.
+        if (!normalizePhone(details.phone)) {
+          errors.show({ phone: PHONE_HINT });
+          setError("Please check your phone number.");
+          return;
+        }
+        setBusy(true);
         try {
           const res = await fetch("/api/booking", {
             method: "POST",
@@ -97,7 +124,14 @@ export default function BookingForm() {
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
-            setError(data?.error ?? "We couldn't confirm that booking. Please try again.");
+            const fields = apiFields(data);
+            errors.show(fields);
+            setError(Object.keys(fields).length ? "Please fix the highlighted fields." : data?.error ?? "We couldn't confirm that booking. Please try again.");
+            if (data?.slotTaken) {
+              // Someone else got there first — show the day as it is now.
+              setSlot(null);
+              setAvailabilityVersion((v) => v + 1);
+            }
             setBusy(false);
             return;
           }
@@ -144,12 +178,13 @@ export default function BookingForm() {
         <div className="flex gap-2 overflow-x-auto pb-1">
           {days.map((d) => {
             const label = d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
-            const on = day === label;
+            const key = dateKey(d);
+            const on = day === key;
             return (
               <button
                 type="button"
-                key={label}
-                onClick={() => setDay(label)}
+                key={key}
+                onClick={() => { setDay(key); setSlot(null); setLoadingSlots(true); }}
                 className={`shrink-0 rounded-lg border px-4 py-3 text-[14px] font-medium transition-colors ${
                   on ? "border-[var(--ink)] bg-[var(--accent)]/15" : "border-[var(--line)] hover:border-[var(--ink)]"
                 }`}
@@ -161,7 +196,7 @@ export default function BookingForm() {
         </div>
         <div className="flex flex-wrap gap-2">
           {slots.map((s) => {
-            const off = unavailable.has(s);
+            const off = loadingSlots || unavailable.has(s);
             const on = slot === s;
             return (
               <button
@@ -179,7 +214,7 @@ export default function BookingForm() {
           })}
         </div>
         <p className="text-[13.5px] text-[var(--ink-3)]">
-          {day ? "All times are IST. You'll get a confirmation on WhatsApp and email." : "Pick a date to see available times."}
+          {day ? "All times are IST. The clinic will confirm your request directly." : "Pick a date to see available times."}
         </p>
       </fieldset>
 
@@ -189,14 +224,25 @@ export default function BookingForm() {
           3 · Your details
         </legend>
         <div className="grid gap-5 sm:grid-cols-2">
-          <label className="grid gap-2"><span className={labelCls}>Name</span><input required type="text" value={details.name} onChange={(e) => set("name", e.target.value)} className={fieldCls} /></label>
-          <label className="grid gap-2"><span className={labelCls}>Phone</span><input required type="tel" value={details.phone} onChange={(e) => set("phone", e.target.value)} className={fieldCls} /></label>
-          <label className="grid gap-2"><span className={labelCls}>Email</span><input required type="email" value={details.email} onChange={(e) => set("email", e.target.value)} className={fieldCls} /></label>
-          <label className="grid gap-2"><span className={labelCls}>Age</span><input required type="number" min={13} max={100} value={details.age} onChange={(e) => set("age", e.target.value)} className={fieldCls} /></label>
+          <div className="grid content-start gap-2">
+            <label htmlFor={errors.inputProps("name").id} className={labelCls}>Name</label>
+            <input required type="text" autoComplete="name" maxLength={120} value={details.name} onChange={(e) => set("name", e.target.value)} className={fieldCls} {...errors.inputProps("name")} />
+            <FieldError id={errors.errorIdFor("name")} message={errors.fields.name} />
+          </div>
+          <div className="grid content-start gap-2">
+            <label htmlFor={errors.inputProps("phone").id} className={labelCls}>Phone</label>
+            <input required type="tel" autoComplete="tel" inputMode="tel" maxLength={24} value={details.phone} onChange={(e) => set("phone", e.target.value)} className={fieldCls} {...errors.inputProps("phone")} />
+            <FieldError id={errors.errorIdFor("phone")} message={errors.fields.phone} />
+          </div>
+          <div className="grid content-start gap-2">
+            <label htmlFor={errors.inputProps("email").id} className={labelCls}>Email</label>
+            <input required type="email" autoComplete="email" maxLength={200} value={details.email} onChange={(e) => set("email", e.target.value)} className={fieldCls} {...errors.inputProps("email")} />
+            <FieldError id={errors.errorIdFor("email")} message={errors.fields.email} />
+          </div>
         </div>
-        <label className="grid gap-2">
-          <span className={labelCls}>Main reason for consultation</span>
-          <select required value={details.reason} onChange={(e) => set("reason", e.target.value)} className={fieldCls}>
+        <div className="grid gap-2">
+          <label htmlFor={errors.inputProps("reason").id} className={labelCls}>Main reason for consultation</label>
+          <select required value={details.reason} onChange={(e) => set("reason", e.target.value)} className={fieldCls} {...errors.inputProps("reason")}>
             <option value="" disabled>Choose one</option>
             <option>Weight loss</option>
             <option>Weight gain</option>
@@ -209,31 +255,35 @@ export default function BookingForm() {
             <option>General wellness</option>
             <option>Not sure yet</option>
           </select>
-        </label>
-        <label className="grid gap-2">
-          <span className={labelCls}>Anything we should know before we meet? <span className="font-normal normal-case tracking-normal">(optional)</span></span>
-          <textarea rows={4} value={details.notes} onChange={(e) => set("notes", e.target.value)} className="rounded-xl border border-[var(--line)] bg-[var(--paper)] p-4 text-[16px] leading-relaxed" />
-        </label>
+          <FieldError id={errors.errorIdFor("reason")} message={errors.fields.reason} />
+        </div>
+        <div className="grid gap-2">
+          <label htmlFor={errors.inputProps("notes").id} className={labelCls}>Anything we should know before we meet? <span className="font-normal normal-case tracking-normal">(optional)</span></label>
+          <textarea rows={4} maxLength={2000} value={details.notes} onChange={(e) => set("notes", e.target.value)} className="rounded-xl border border-[var(--line)] bg-[var(--paper)] p-4 text-[16px] leading-relaxed aria-[invalid=true]:border-[var(--alert)]" {...errors.inputProps("notes")} />
+          <FieldError id={errors.errorIdFor("notes")} message={errors.fields.notes} />
+        </div>
       </fieldset>
 
       {/* consent */}
       <fieldset className="grid gap-4">
         <legend className="mb-2 font-[var(--font-display)] text-[21px] font-semibold">4 · Confirm</legend>
         <label className="flex items-start gap-3 text-[14.5px] leading-relaxed text-[var(--ink-2)]">
-          <input type="checkbox" required checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1 h-4 w-4 shrink-0" />
+          <input type="checkbox" required checked={terms} onChange={(e) => { setTerms(e.target.checked); errors.clear("acceptTerms"); }} className="mt-1 h-4 w-4 shrink-0" {...errors.inputProps("acceptTerms")} />
           <span>
             I&rsquo;ve read and accept the <Link href="/terms" className="underline">Terms of Service</Link> and{" "}
             <Link href="/privacy-policy" className="underline">Privacy Policy</Link>.
           </span>
         </label>
         <label className="flex items-start gap-3 text-[14.5px] leading-relaxed text-[var(--ink-2)]">
-          <input type="checkbox" required checked={disclaimer} onChange={(e) => setDisclaimer(e.target.checked)} className="mt-1 h-4 w-4 shrink-0" />
+          <input type="checkbox" required checked={disclaimer} onChange={(e) => { setDisclaimer(e.target.checked); errors.clear("acceptDisclaimer"); }} className="mt-1 h-4 w-4 shrink-0" {...errors.inputProps("acceptDisclaimer")} />
           <span>
             I understand that Ozmo provides nutrition and lifestyle guidance and does not diagnose or
             treat medical conditions.{" "}
             <Link href="/medical-disclaimer" className="underline">Read our medical disclaimer</Link>.
           </span>
         </label>
+        <FieldError id={errors.errorIdFor("acceptTerms")} message={errors.fields.acceptTerms} />
+        <FieldError id={errors.errorIdFor("acceptDisclaimer")} message={errors.fields.acceptDisclaimer} />
         {error && (
           <p role="alert" className="rounded-xl border border-[var(--alert)]/30 bg-[var(--alert)]/6 px-4 py-3 text-[14.5px] text-[var(--ink-2)]">
             {error}

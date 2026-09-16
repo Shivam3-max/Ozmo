@@ -19,7 +19,7 @@ export async function generateMetadata({
   const p = getProgram(slug);
   if (!p) return {};
   return {
-    title: p.metaTitle,
+    title: { absolute: p.metaTitle },
     description: p.metaDescription,
     alternates: { canonical: `/programs/${p.slug}` },
   };

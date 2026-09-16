@@ -1,36 +1,50 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff, canSeeHealthData } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { PageTitle, Panel, Flag, Empty, timeAgo } from "@/components/admin/ui";
 import ReplyBox from "@/components/admin/ReplyBox";
+import { CLINIC_TIME_ZONE } from "@/lib/clinic-time";
+import { pageFrom, pageInfo, paging } from "@/lib/pagination";
+import Pager from "@/components/admin/Pager";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminMessagesPage() {
+const PAGE_SIZE = 20;
+
+export default async function AdminMessagesPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const user = await requireStaff();
-  if (!canSeeHealthData(user.role)) {
+  if (!can(user.role, "health.read")) {
     return <Panel className="px-6 py-8"><p className="text-[15px] text-[var(--ink-2)]">Not part of your role&rsquo;s access.</p></Panel>;
   }
 
-  const threads = await prisma.messageThread.findMany({
-    where: { client: { clinicId: CLINIC_ID } },
-    // Oldest unanswered first — newest-first is how messages get missed.
-    orderBy: [{ staffUnread: "desc" }, { lastMessageAt: "asc" }],
-    include: {
-      client: { include: { user: true } },
-      messages: { orderBy: { createdAt: "asc" }, include: { sender: true }, take: 40 },
-    },
-  });
+  const page = pageFrom((await searchParams).page);
+  const where = { client: { clinicId: user.clinicId }, messages: { some: {} } };
+  const [total, waitingCount, rawThreads] = await Promise.all([
+    prisma.messageThread.count({ where }),
+    prisma.messageThread.count({ where: { ...where, staffUnread: { gt: 0 } } }),
+    prisma.messageThread.findMany({
+      where,
+      // Oldest unanswered first — newest-first is how messages get missed.
+      orderBy: [{ staffUnread: "desc" }, { lastMessageAt: "asc" }],
+      ...paging(page, PAGE_SIZE),
+      include: {
+        client: { include: { user: true } },
+        // The latest 30, shown oldest to newest. Taking the first 30 would hide every new reply in a long thread.
+        messages: { orderBy: { createdAt: "desc" }, include: { sender: true }, take: 30 },
+      },
+    }),
+  ]);
+  const threads = rawThreads.map((t) => ({ ...t, messages: [...t.messages].reverse() }));
+  await prisma.auditLog.create({ data: { clinicId: user.clinicId, actorId: user.sub, action: "CLIENT_MESSAGES_VIEWED", entityType: "MessageThread", entityId: "list" } });
 
-  const waiting = threads.filter((t) => t.staffUnread > 0);
-  const active = threads.filter((t) => t.messages.length > 0);
+  const active = threads;
 
   return (
     <>
       <PageTitle
         title="Messages"
-        sub={`${waiting.length} waiting on a reply · ${active.length} active ${active.length === 1 ? "thread" : "threads"}`}
+        sub={`${waitingCount} waiting on a reply · ${total} active ${total === 1 ? "thread" : "threads"}`}
       />
 
       {active.length === 0 ? (
@@ -63,7 +77,7 @@ export default async function AdminMessagesPage() {
                           <p className="whitespace-pre-wrap text-[14.5px] leading-relaxed">{m.body}</p>
                           <p className={`tabular mt-1 text-[11.5px] ${fromStaff ? "text-white/55" : "text-[var(--ink-3)]"}`}>
                             {fromStaff ? m.sender.name.split(" ")[0] : "Client"} ·{" "}
-                            {m.createdAt.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            {m.createdAt.toLocaleString("en-IN", { timeZone: CLINIC_TIME_ZONE, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                           </p>
                         </div>
                       </div>
@@ -77,6 +91,7 @@ export default async function AdminMessagesPage() {
           })}
         </div>
       )}
+      <Pager info={pageInfo(page, PAGE_SIZE, total)} base="/admin/messages" params={{}} noun="threads" />
     </>
   );
 }

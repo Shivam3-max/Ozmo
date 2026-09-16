@@ -3,12 +3,22 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import Logo from "./Logo";
-import { programs } from "@/lib/programs";
-import { conditions } from "@/lib/conditions";
 
-export default function Header() {
+/** Just what the menus show. The marketing layout (a server component) passes
+ * these in, so the full programme and condition content never ships to the browser. */
+export type HeaderNav = {
+  programs: { slug: string; name: string; oneLiner: string }[];
+  conditions: { slug: string; name: string; cardBlurb: string }[];
+};
+
+type PanelName = "programs" | "conditions";
+
+export default function Header({ nav }: { nav: HeaderNav }) {
+  const { programs, conditions } = nav;
   const [open, setOpen] = useState(false);
-  const [panel, setPanel] = useState<"programs" | "conditions" | "knowledge" | null>(null);
+  const [panel, setPanel] = useState<PanelName | null>(null);
+  const triggers = useRef<Record<PanelName, HTMLButtonElement | null>>({ programs: null, conditions: null });
+  const mobileTrigger = useRef<HTMLButtonElement | null>(null);
 
   // The panel sits below the header, so travelling from a trigger down into it
   // crosses a strip that belongs to neither. Without a grace period the panel
@@ -18,7 +28,7 @@ export default function Header() {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = null;
   };
-  const openPanel = (name: "programs" | "conditions") => {
+  const openPanel = (name: PanelName) => {
     cancelClose();
     setPanel(name);
   };
@@ -29,19 +39,80 @@ export default function Header() {
 
   useEffect(() => cancelClose, []);
 
-  // Escape should always get you out of an open panel.
+  // Escape closes the open menu and puts focus back on its button, so keyboard
+  // users aren't dropped at the top of the page.
   useEffect(() => {
     if (!panel) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPanel(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const trigger = triggers.current[panel];
+      setPanel(null);
+      trigger?.focus();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [panel]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      mobileTrigger.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const close = () => {
     cancelClose();
     setOpen(false);
     setPanel(null);
   };
+
+  /** Closes a menu once keyboard focus moves outside its button and panel. */
+  const closeOnFocusOut = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPanel(null);
+  };
+
+  const menu = (name: PanelName, label: string, items: { href: string; title: string; blurb: string }[]) => (
+    <div onBlur={closeOnFocusOut} className="flex h-full items-center">
+      <button
+        ref={(el) => { triggers.current[name] = el; }}
+        type="button"
+        className="rounded-md px-3 py-2 text-[15px] font-medium hover:text-[var(--accent-text)]"
+        onMouseEnter={() => openPanel(name)}
+        onClick={() => (panel === name ? setPanel(null) : openPanel(name))}
+        aria-expanded={panel === name}
+        aria-controls={`menu-${name}`}
+      >
+        {label}
+      </button>
+      {panel === name && (
+        <div
+          id={`menu-${name}`}
+          className="absolute left-0 right-0 top-[80px] border-b border-[var(--line)] bg-[var(--paper)] shadow-[0_12px_28px_rgba(15,46,61,0.08)]"
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+        >
+          <ul className="mx-auto grid max-w-[1240px] gap-8 px-6 py-9 md:grid-cols-3">
+            {items.map((item) => (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  onClick={close}
+                  className="group block rounded-lg border border-transparent p-3 transition-colors hover:border-[var(--line)]"
+                >
+                  <span className="block text-[16px] font-semibold group-hover:text-[var(--accent-text)]">{item.title}</span>
+                  <span className="block text-[14px] text-[var(--ink-2)]">{item.blurb}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[var(--ground)]/85 backdrop-blur-xl">
@@ -52,28 +123,13 @@ export default function Header() {
 
         {/* desktop nav */}
         <nav
+          aria-label="Main"
           className="hidden h-full items-center gap-1 lg:flex"
           onMouseLeave={scheduleClose}
           onMouseEnter={cancelClose}
         >
-          <button
-            className="rounded-md px-3 py-2 text-[15px] font-medium hover:text-[var(--accent-text)]"
-            onMouseEnter={() => openPanel("programs")}
-            onFocus={() => openPanel("programs")}
-            onClick={() => (panel === "programs" ? setPanel(null) : openPanel("programs"))}
-            aria-expanded={panel === "programs"}
-          >
-            Programmes
-          </button>
-          <button
-            className="rounded-md px-3 py-2 text-[15px] font-medium hover:text-[var(--accent-text)]"
-            onMouseEnter={() => openPanel("conditions")}
-            onFocus={() => openPanel("conditions")}
-            onClick={() => (panel === "conditions" ? setPanel(null) : openPanel("conditions"))}
-            aria-expanded={panel === "conditions"}
-          >
-            Conditions
-          </button>
+          {menu("programs", "Programmes", programs.map((p) => ({ href: `/programs/${p.slug}`, title: p.name, blurb: p.oneLiner })))}
+          {menu("conditions", "Conditions", conditions.map((c) => ({ href: `/conditions/${c.slug}`, title: c.name, blurb: c.cardBlurb })))}
           <Link href="/how-it-works" className="rounded-md px-3 py-2 text-[15px] font-medium hover:text-[var(--accent-text)]">
             How It Works
           </Link>
@@ -98,55 +154,19 @@ export default function Header() {
               Start free assessment
             </Link>
           </div>
-
-          {panel && (
-            <div
-              className="absolute left-0 right-0 top-[80px] border-b border-[var(--line)] bg-[var(--paper)] shadow-[0_12px_28px_rgba(15,46,61,0.08)]"
-              onMouseEnter={cancelClose}
-              onMouseLeave={scheduleClose}
-            >
-              <div className="mx-auto grid max-w-[1240px] gap-8 px-6 py-9 md:grid-cols-3">
-                {panel === "programs" &&
-                  programs.map((p) => (
-                    <Link
-                      key={p.slug}
-                      href={`/programs/${p.slug}`}
-                      onClick={close}
-                      className="group rounded-lg border border-transparent p-3 transition-colors hover:border-[var(--line)]"
-                    >
-                      <span className="block text-[16px] font-semibold group-hover:text-[var(--accent-text)]">
-                        {p.name}
-                      </span>
-                      <span className="block text-[14px] text-[var(--ink-2)]">{p.oneLiner}</span>
-                    </Link>
-                  ))}
-                {panel === "conditions" &&
-                  conditions.map((c) => (
-                    <Link
-                      key={c.slug}
-                      href={`/conditions/${c.slug}`}
-                      onClick={close}
-                      className="group rounded-lg border border-transparent p-3 transition-colors hover:border-[var(--line)]"
-                    >
-                      <span className="block text-[16px] font-semibold group-hover:text-[var(--accent-text)]">
-                        {c.name}
-                      </span>
-                      <span className="block text-[14px] text-[var(--ink-2)]">{c.cardBlurb}</span>
-                    </Link>
-                  ))}
-              </div>
-            </div>
-          )}
         </nav>
 
         {/* mobile trigger */}
         <button
+          ref={mobileTrigger}
+          type="button"
           className="lg:hidden rounded-md p-2"
           onClick={() => setOpen(!open)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
+          aria-controls="mobile-menu"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
             {open ? (
               <>
                 <path d="M18 6 6 18" />
@@ -165,7 +185,7 @@ export default function Header() {
 
       {/* mobile drawer */}
       {open && (
-        <div className="lg:hidden max-h-[calc(100vh-80px)] overflow-y-auto border-t border-[var(--line)] bg-[var(--ground)] px-6 py-6">
+        <nav id="mobile-menu" aria-label="Main" className="lg:hidden max-h-[calc(100vh-80px)] overflow-y-auto border-t border-[var(--line)] bg-[var(--ground)] px-6 py-6">
           <p className="eyebrow mb-3">Programmes</p>
           <div className="mb-6 grid gap-1">
             {programs.map((p) => (
@@ -196,7 +216,7 @@ export default function Header() {
           >
             Start Your Free Health Assessment
           </Link>
-        </div>
+        </nav>
       )}
     </header>
   );

@@ -1,28 +1,38 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { currentClient } from "@/lib/portal";
+import { CLINIC_TIME_ZONE } from "@/lib/clinic-time";
+import { periodLabel } from "@/lib/services/reports";
+import { documentsConfigured } from "@/lib/documents/crypto";
+import { CLIENT_DOCUMENT_TYPES, DOCUMENT_LABEL, type DocumentTypeValue } from "@/lib/documents/files";
+import UploadDocument from "@/components/UploadDocument";
 
 export const dynamic = "force-dynamic";
 
-const LABEL: Record<string, string> = {
-  DIET_PLAN: "Diet plan",
-  PROGRESS_REPORT: "Progress report",
-  CONSULT_NOTE: "Consultation note",
-  LAB_REPORT: "Lab report",
-  INVOICE: "Invoice",
-  OTHER: "Document",
-};
+const card = "rounded-2xl border border-[var(--line)] bg-[var(--paper)]";
+const heading = "mb-3 text-[12px] font-bold uppercase tracking-[0.12em] text-[var(--ink-3)]";
+const longDate = (d: Date) => d.toLocaleDateString("en-IN", { timeZone: CLINIC_TIME_ZONE, day: "numeric", month: "long", year: "numeric" });
 
 export default async function ReportsPage() {
   const client = await currentClient();
   if (!client) return null;
 
-  const [documents, plans] = await Promise.all([
-    prisma.document.findMany({ where: { clientId: client.id }, orderBy: { createdAt: "desc" } }),
+  const [documents, plans, reports] = await Promise.all([
+    // Staff can keep internal documents off the portal; only shared ones are listed.
+    prisma.document.findMany({
+      where: { clientId: client.id, visibleToClient: true },
+      select: { id: true, title: true, type: true, createdAt: true, uploadedById: true },
+      orderBy: { createdAt: "desc" },
+    }),
     prisma.dietPlan.findMany({
       where: { clientId: client.id, status: { in: ["ACTIVE", "ARCHIVED"] } },
       orderBy: { version: "desc" },
       select: { id: true, title: true, version: true, status: true, publishedAt: true, updatedAt: true },
+    }),
+    prisma.progressReport.findMany({
+      where: { clientId: client.id, status: "SENT" },
+      select: { id: true, periodStart: true, periodEnd: true },
+      orderBy: { periodEnd: "desc" },
     }),
   ]);
 
@@ -34,20 +44,19 @@ export default async function ReportsPage() {
       </p>
 
       <section className="mt-6">
-        <h2 className="mb-3 text-[12px] font-bold uppercase tracking-[0.12em] text-[var(--ink-3)]">Your plans</h2>
+        <h2 className={heading}>Your plans</h2>
         {plans.length === 0 ? (
-          <div className="rounded-2xl border border-[var(--line)] bg-[var(--paper)] px-6 py-7">
+          <div className={`${card} px-6 py-7`}>
             <p className="text-[15px] text-[var(--ink-2)]">Your first plan will appear here once it&rsquo;s published.</p>
           </div>
         ) : (
           <div className="grid gap-2.5">
             {plans.map((p) => (
-              <div key={p.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--paper)] px-5 py-4">
+              <div key={p.id} className={`${card} flex flex-wrap items-center gap-3 px-5 py-4`}>
                 <div className="min-w-0 flex-1">
                   <p className="text-[15.5px] font-semibold">{p.title}</p>
                   <p className="tabular mt-0.5 text-[13px] text-[var(--ink-3)]">
-                    Version {p.version} ·{" "}
-                    {(p.publishedAt ?? p.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+                    Version {p.version} · {longDate(p.publishedAt ?? p.updatedAt)}
                   </p>
                 </div>
                 {p.status === "ACTIVE" ? (
@@ -64,12 +73,34 @@ export default async function ReportsPage() {
       </section>
 
       <section className="mt-8">
-        <h2 className="mb-3 text-[12px] font-bold uppercase tracking-[0.12em] text-[var(--ink-3)]">Documents</h2>
-        {documents.length === 0 ? (
-          <div className="rounded-2xl border border-[var(--line)] bg-[var(--paper)] px-6 py-7">
+        <h2 className={heading}>Progress reports</h2>
+        {reports.length === 0 ? (
+          <div className={`${card} px-6 py-7`}>
             <p className="text-[15px] leading-relaxed text-[var(--ink-2)]">
-              Progress reports, consultation notes and lab reports will collect here as your
-              programme goes on.
+              Your dietitian writes a progress report as your programme goes on. It will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-2.5">
+            {reports.map((r) => (
+              <Link key={r.id} href={`/portal/reports/${r.id}`} className={`${card} flex flex-wrap items-center gap-3 px-5 py-4 hover:border-[var(--ink)]`}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[15.5px] font-semibold">Progress report</p>
+                  <p className="tabular mt-0.5 text-[13px] text-[var(--ink-3)]">{periodLabel(r.periodStart, r.periodEnd)}</p>
+                </div>
+                <span className="shrink-0 text-[13.5px] font-semibold text-[var(--accent-text)]">Read →</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className={heading}>Documents</h2>
+        {documents.length === 0 ? (
+          <div className={`${card} px-6 py-7`}>
+            <p className="text-[15px] leading-relaxed text-[var(--ink-2)]">
+              Lab reports and other documents you or your dietitian share will collect here.
             </p>
           </div>
         ) : (
@@ -77,14 +108,16 @@ export default async function ReportsPage() {
             {documents.map((d) => (
               <a
                 key={d.id}
-                href={d.fileUrl}
-                className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--line)] bg-[var(--paper)] px-5 py-4 hover:border-[var(--ink)]"
+                href={`/api/documents/${d.id}?as=client`}
+                target="_blank"
+                rel="noopener"
+                className={`${card} flex flex-wrap items-center gap-3 px-5 py-4 hover:border-[var(--ink)]`}
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-[15.5px] font-semibold">{d.title}</p>
                   <p className="tabular mt-0.5 text-[13px] text-[var(--ink-3)]">
-                    {LABEL[d.type] ?? "Document"} ·{" "}
-                    {d.createdAt.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+                    {DOCUMENT_LABEL[d.type as DocumentTypeValue] ?? "Document"}
+                    {d.uploadedById === client.userId ? " · shared by you" : ""} · {longDate(d.createdAt)}
                   </p>
                 </div>
                 <span className="shrink-0 text-[13.5px] font-semibold text-[var(--accent-text)]">Open →</span>
@@ -93,6 +126,16 @@ export default async function ReportsPage() {
           </div>
         )}
       </section>
+
+      {documentsConfigured() && (
+        <section className={`${card} mt-8 px-6 py-6`}>
+          <h2 className="text-[16px] font-semibold">Share a document with your dietitian</h2>
+          <p className="mb-4 mt-1 max-w-[62ch] text-[14px] leading-relaxed text-[var(--ink-2)]">
+            Blood test results or a prescription help your dietitian adjust your plan. Only the clinic team can see what you share.
+          </p>
+          <UploadDocument endpoint="/api/portal/documents" types={CLIENT_DOCUMENT_TYPES} submitLabel="Share" />
+        </section>
+      )}
     </>
   );
 }

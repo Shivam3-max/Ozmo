@@ -3,11 +3,12 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Logo from "@/components/Logo";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 export default function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/admin";
+  const next = safeRedirectPath(params.get("next"), "/admin");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -87,6 +88,11 @@ export default function LoginForm() {
       >
         {busy ? "Signing in…" : "Sign in"}
       </button>
+
+      <p className="mt-5 text-[13.5px] leading-relaxed text-[var(--ink-2)]">
+        Forgotten your password or locked out? Ask the clinic administrator for a reset link — it arrives from them,
+        never by email from Ozmo.
+      </p>
     </form>
   );
 }

@@ -4,6 +4,13 @@ import { requireStaff } from "@/lib/auth";
 import { PageTitle, Panel, Flag, Empty, timeAgo } from "@/components/admin/ui";
 import AppointmentActions from "@/components/admin/AppointmentActions";
 import ConsultNote from "@/components/admin/ConsultNote";
+import { formatPhone } from "@/lib/phone";
+import { clinicMidnight } from "@/lib/clinic-time";
+import { MeetingLink } from "@/components/admin/ScheduleAppointment";
+import { pageFrom, pageInfo, paging } from "@/lib/pagination";
+import Pager from "@/components/admin/Pager";
+import type { Prisma } from "@prisma/client";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
@@ -16,30 +23,34 @@ function dayKey(d: Date) {
 export default async function AppointmentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; page?: string }>;
 }) {
-  await requireStaff();
-  const { view = "upcoming" } = await searchParams;
+  const user = await requireStaff();
+  const showHealth = can(user.role, "health.read");
+  const { view = "upcoming", page: rawPage } = await searchParams;
+  const page = pageFrom(rawPage);
+  const PAGE_SIZE = 60;
 
   const now = new Date();
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
+  const startOfToday = clinicMidnight(now);
 
-  const appointments = await prisma.appointment.findMany({
-    where:
+  const where: Prisma.AppointmentWhereInput =
       view === "past"
-        ? { scheduledAt: { lt: startOfToday } }
+        ? { scheduledAt: { lt: startOfToday }, OR: [{ lead: { clinicId: user.clinicId } }, { client: { clinicId: user.clinicId } }] }
         : view === "attention"
-        ? { status: { in: ["SCHEDULED"] }, scheduledAt: { lt: now } }
-        : { scheduledAt: { gte: startOfToday } },
+        ? { status: { in: ["SCHEDULED"] }, scheduledAt: { lt: now }, OR: [{ lead: { clinicId: user.clinicId } }, { client: { clinicId: user.clinicId } }] }
+        : { scheduledAt: { gte: startOfToday }, OR: [{ lead: { clinicId: user.clinicId } }, { client: { clinicId: user.clinicId } }] };
+  const total = await prisma.appointment.count({ where });
+  const appointments = await prisma.appointment.findMany({
+    where,
     orderBy: { scheduledAt: view === "past" ? "desc" : "asc" },
-    take: 120,
-    include: { lead: true, client: { include: { user: true } }, dietitian: true, note: true },
+    ...paging(page, PAGE_SIZE),
+    include: { lead: true, client: { include: { user: true } }, dietitian: true, note: showHealth },
   });
 
   // Anything still "scheduled" after its time has passed needs marking off.
   const overdue = await prisma.appointment.count({
-    where: { status: "SCHEDULED", scheduledAt: { lt: now } },
+    where: { status: "SCHEDULED", scheduledAt: { lt: now }, OR: [{ lead: { clinicId: user.clinicId } }, { client: { clinicId: user.clinicId } }] },
   });
 
   const grouped = appointments.reduce<Record<string, typeof appointments>>((acc, a) => {
@@ -58,7 +69,7 @@ export default async function AppointmentsPage({
     <>
       <PageTitle
         title="Appointments"
-        sub={`${appointments.length} shown${overdue ? ` · ${overdue} past their time and still marked scheduled` : ""}`}
+        sub={`${total} ${view === "past" ? "in the past" : view === "attention" ? "to mark off" : "upcoming"}${overdue ? ` · ${overdue} past their time and still marked scheduled` : ""}`}
       />
 
       <div className="mb-5 flex flex-wrap gap-2">
@@ -116,18 +127,21 @@ export default async function AppointmentsPage({
                           <p className="mt-1 text-[13.5px] text-[var(--ink-2)]">
                             {a.type === "INITIAL" ? "Initial consultation" : "Follow-up"} ·{" "}
                             {a.mode === "VIDEO" ? "Online" : "In clinic"} · {a.durationMin} min
-                            {phone ? ` · ${phone}` : ""}
+                            {phone ? ` · ${formatPhone(phone)}` : ""}
                           </p>
-                          {a.reason && <p className="mt-1 text-[13.5px] text-[var(--ink-3)]">Reason: {a.reason}</p>}
-                          {a.notes && <p className="mt-1 text-[13.5px] italic text-[var(--ink-3)]">&ldquo;{a.notes}&rdquo;</p>}
+                          {showHealth && a.reason && <p className="mt-1 text-[13.5px] text-[var(--ink-3)]">Reason: {a.reason}</p>}
+                          {showHealth && a.notes && <p className="mt-1 text-[13.5px] italic text-[var(--ink-3)]">&ldquo;{a.notes}&rdquo;</p>}
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-2">
+                          {a.status === "SCHEDULED" && a.mode === "VIDEO" && a.scheduledAt > now && (
+                            <MeetingLink appointmentId={a.id} initial={a.meetingUrl} />
+                          )}
                           {a.status === "SCHEDULED" ? (
                             <AppointmentActions id={a.id} />
                           ) : (
                             <span className="text-[12.5px] text-[var(--ink-3)]">{timeAgo(a.updatedAt)}</span>
                           )}
-                          <ConsultNote
+                          {showHealth && <ConsultNote
                             appointmentId={a.id}
                             who={who}
                             initial={
@@ -141,7 +155,7 @@ export default async function AppointmentsPage({
                                   }
                                 : null
                             }
-                          />
+                          />}
                         </div>
                       </li>
                     );
@@ -152,6 +166,7 @@ export default async function AppointmentsPage({
           ))}
         </div>
       )}
+      <Pager info={pageInfo(page, PAGE_SIZE, total)} base="/admin/appointments" params={{ view }} noun="appointments" />
     </>
   );
 }

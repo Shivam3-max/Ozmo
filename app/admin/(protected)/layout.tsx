@@ -3,7 +3,7 @@ import { requireStaff } from "@/lib/auth";
 import Shell from "@/components/admin/Shell";
 
 export const metadata: Metadata = {
-  title: "Ozmo Practice",
+  title: "Practice",
   robots: { index: false, follow: false },
 };
 

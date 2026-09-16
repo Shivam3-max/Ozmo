@@ -37,7 +37,7 @@ const groups = [
     items: [
       { q: "Do I need to download an app?", a: "No. Ozmo runs in your browser. On a phone you can add it to your home screen and it behaves like an app, without an app store download." },
       { q: "How long does daily logging take?", a: "Under a minute. Tick off meals, add water, and record your weight once a week." },
-      { q: "What if I forget to log?", a: "You'll get a gentle reminder, not a lecture. Missing a day doesn't break anything — a missing fortnight is worth a conversation." },
+      { q: "What if I forget to log?", a: "Nothing breaks — just pick up with your next meal. Your score counts the days you log, not a perfect streak. A missed day is normal; if a fortnight slips by, message your dietitian and adjust the plan together." },
       { q: "Can my dietitian see everything I log?", a: "Yes. That's the point. They see your meals, your water, your weight and your adherence, so follow-ups are based on what actually happened rather than what you remember." },
     ],
   },

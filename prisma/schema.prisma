@@ -1,21 +1,17 @@
 // Ozmo Health OS — data model
-// Written from docs/12-DATA-MODEL-TECH.md. Postgres so that scalar lists and
-// Json work natively; the Clinic table exists from day one so multi-tenancy is
-// a where-clause later rather than a rewrite.
+// Written from docs/12-DATA-MODEL-TECH.md. MySQL (Hostinger); Json columns carry
+// lists. The Clinic table exists from day one so multi-tenancy is a
+// where-clause later rather than a rewrite.
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../lib/generated/prisma"
 }
 
-// Local development runs on SQLite so the whole stack is verifiable without a
-// database account. Production needs Postgres (Vercel's filesystem is
-// ephemeral and read-only) — switch `provider` to "postgresql", point
-// DATABASE_URL at Neon/Supabase and re-run migrate. Every field below is
-// deliberately expressed in types both providers support, so that switch is
-// the provider line and nothing else.
+// Hostinger Business provides managed MySQL. Local development uses a separate
+// MySQL database so migrations are exercised against the production engine.
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 /**
@@ -27,7 +23,7 @@ model Clinic {
   name      String
   legalName String?
   gstin     String?
-  address   String?
+  address   String?  @db.Text
   city      String?
   phone     String?
   email     String?
@@ -35,14 +31,15 @@ model Clinic {
   settings  Json?
   createdAt DateTime @default(now())
 
-  users     User[]
-  leads     Lead[]
-  clients   Client[]
-  programs  Program[]
-  foods     Food[]
-  templates PlanTemplate[]
-  messages  ContactMessage[]
-  audits    AuditLog[]
+  users         User[]
+  leads         Lead[]
+  clients       Client[]
+  programs      Program[]
+  foods         Food[]
+  templates     PlanTemplate[]
+  messages      ContactMessage[]
+  audits        AuditLog[]
+  notifications Notification[]
 }
 
 enum UserRole {
@@ -54,15 +51,16 @@ enum UserRole {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  clinicId     String
-  role         UserRole  @default(CLIENT)
-  name         String
-  email        String    @unique
-  phone        String?   @unique
-  passwordHash String?
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
+  id             String    @id @default(cuid())
+  clinicId       String
+  role           UserRole  @default(CLIENT)
+  name           String
+  email          String    @unique
+  phone          String?   @unique
+  passwordHash   String?
+  isActive       Boolean   @default(true)
+  sessionVersion Int       @default(0)
+  lastLoginAt    DateTime?
 
   /// Portal invite. Staff generate a link, the client sets their own password.
   inviteToken     String?   @unique
@@ -134,6 +132,10 @@ model Lead {
   nextActionAt      DateTime?
   convertedClientId String?
 
+  /// Set when a public submission reuses a phone already on file. Anonymous
+  /// input never edits the earlier record; staff decide whether it's the same person.
+  duplicateOfLeadId String?
+
   consentService   Boolean   @default(true)
   consentMarketing Boolean   @default(false)
   consentAt        DateTime?
@@ -150,13 +152,15 @@ model Lead {
 
   @@index([clinicId, stage])
   @@index([clinicId, createdAt])
+  @@index([clinicId, phone])
+  @@index([clinicId, score, createdAt])
 }
 
 model LeadActivity {
   id        String   @id @default(cuid())
   leadId    String
   type      String
-  note      String?
+  note      String?  @db.Text
   staffId   String?
   createdAt DateTime @default(now())
 
@@ -202,19 +206,22 @@ model Assessment {
 }
 
 model ContactMessage {
-  id        String    @id @default(cuid())
-  clinicId  String
-  name      String
-  phone     String
-  email     String?
-  topic     String
-  message   String
-  handledAt DateTime?
-  createdAt DateTime  @default(now())
+  id          String    @id @default(cuid())
+  clinicId    String
+  name        String
+  phone       String
+  email       String?
+  topic       String
+  message     String    @db.Text
+  handledAt   DateTime?
+  /// Staff member who marked it handled; kept even if they later leave.
+  handledById String?
+  createdAt   DateTime  @default(now())
 
   clinic Clinic @relation(fields: [clinicId], references: [id])
 
   @@index([clinicId, createdAt])
+  @@index([clinicId, handledAt, createdAt])
 }
 
 /**
@@ -276,8 +283,10 @@ model Client {
   progressReports  ProgressReport[]
   thread           MessageThread?
   documents        Document[]
+  dataRequests     DataRequest[]
 
   @@index([clinicId, status])
+  @@index([clinicId, joinedAt])
 }
 
 model HealthProfile {
@@ -290,7 +299,7 @@ model HealthProfile {
   symptoms      Json?
   /// The long onboarding form — vitals, cycle, stress, sleep, routine, limits.
   intake        Json?
-  notes         String?
+  notes         String?  @db.Text
   version       Int      @default(1)
   createdAt     DateTime @default(now())
 
@@ -304,11 +313,11 @@ model Program {
   clinicId    String
   slug        String
   name        String
-  description String?
+  description String? @db.Text
   durations   Json?
   pricing     Json?
   inclusions  Json?
-  followUps   String?
+  followUps   String? @db.Text
   isActive    Boolean @default(true)
   order       Int     @default(0)
 
@@ -391,12 +400,12 @@ model DietPlan {
   status       PlanStatus @default(DRAFT)
 
   /// "15 Days Vegetarian Diabetes & Fatty Liver Plan"
-  title          String
+  title          String      @db.VarChar(255)
   dayMode        PlanDayMode @default(SINGLE)
   dayCount       Int         @default(1)
   startDate      DateTime?
   dietPreference String?
-  conditionsNote String?
+  conditionsNote String?     @db.Text
 
   /// Optional and advisory. Never required to publish.
   showTargets    Boolean @default(false)
@@ -441,7 +450,7 @@ model PlanSlot {
   label      String
   timeHint   String?
   condition  String?
-  optionNote String?
+  optionNote String? @db.VarChar(255)
   order      Int     @default(0)
 
   day   PlanDay    @relation(fields: [planDayId], references: [id], onDelete: Cascade)
@@ -456,9 +465,9 @@ model PlanItem {
   type       PlanItemType @default(FOOD)
 
   /// The line as she would write it: "150gm curd (whisked, jeera, pudhina)".
-  text     String
-  quantity String?
-  prepNote String?
+  text     String  @db.Text
+  quantity String? @db.VarChar(255)
+  prepNote String? @db.Text
 
   /// Items sharing a group number inside one slot are alternatives to each other.
   optionGroup Int?
@@ -489,7 +498,7 @@ model PlanTemplate {
   id             String   @id @default(cuid())
   clinicId       String
   name           String
-  description    String?
+  description    String?  @db.Text
   tags           Json?
   dietPreference String?
   conditions     Json?
@@ -545,6 +554,7 @@ model Food {
   planItems PlanItem[]
 
   @@index([category])
+  @@index([clinicId, category, name])
   @@index([name])
 }
 
@@ -581,8 +591,9 @@ model Appointment {
   scheduledAt DateTime
   durationMin Int      @default(60)
   meetingUrl  String?
-  reason      String?
-  notes       String?
+  reason      String?  @db.Text
+  notes       String?  @db.Text
+  slotKey     String?  @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -599,9 +610,9 @@ model Appointment {
 model ConsultationNote {
   id               String    @id @default(cuid())
   appointmentId    String    @unique
-  subjective       String?
-  observations     String?
-  planOfAction     String?
+  subjective       String?   @db.Text
+  observations     String?   @db.Text
+  planOfAction     String?   @db.Text
   nextReviewAt     DateTime?
   sharedWithClient Boolean   @default(false)
   createdById      String
@@ -621,7 +632,7 @@ model Measurement {
   chestCm    Float?
   armCm      Float?
   bodyFatPct Float?
-  note       String?
+  note       String?  @db.Text
   createdAt  DateTime @default(now())
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -641,14 +652,14 @@ model FoodLog {
   date       DateTime
   slotLabel  String
   source     LogSource @default(FROM_PLAN)
-  customText String?
+  customText String?   @db.Text
   quantity   Float?
   unit       String?
   loggedAt   DateTime  @default(now())
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([clientId, date])
+  @@unique([clientId, date, slotLabel])
 }
 
 model WaterLog {
@@ -688,9 +699,10 @@ model ProgressReport {
   periodEnd      DateTime
   /// Snapshot of the numbers at generation time, so a sent report never changes.
   data           Json?
-  observations   String?
-  nextMonthFocus String?
+  observations   String?      @db.Text
+  nextMonthFocus String?      @db.Text
   status         ReportStatus @default(DRAFT)
+  createdById    String?
   approvedById   String?
   approvedAt     DateTime?
   sentAt         DateTime?
@@ -716,7 +728,7 @@ model Message {
   id        String    @id @default(cuid())
   threadId  String
   senderId  String
-  body      String
+  body      String    @db.Text
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
@@ -736,21 +748,133 @@ enum DocumentType {
 }
 
 model Document {
-  id        String       @id @default(cuid())
-  clientId  String
-  type      DocumentType
-  title     String
-  fileUrl   String
-  createdAt DateTime     @default(now())
+  id              String       @id @default(cuid())
+  clientId        String
+  type            DocumentType
+  title           String
+  /// Internal download path. Files live encrypted in DocumentFile, never on disk.
+  fileUrl         String       @db.Text
+  mimeType        String?
+  sizeBytes       Int?
+  sha256          String?      @db.VarChar(64)
+  /// Who added it: the client from the portal, or a staff member.
+  uploadedById    String?
+  /// Staff-only documents (e.g. internal notes) are hidden from the portal.
+  visibleToClient Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+
+  client Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  file   DocumentFile?
+
+  @@index([clientId, type])
+}
+
+/// Encrypted file contents (AES-256-GCM), kept apart from Document so listings
+/// never load file bytes.
+model DocumentFile {
+  documentId String @id
+  keyVersion Int    @default(1)
+  iv         Bytes  @db.Binary(12)
+  authTag    Bytes  @db.Binary(16)
+  ciphertext Bytes  @db.LongBlob
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// Every message the system tries to send, so staff can see what went out and
+/// retry what didn't. Bodies are written without health details.
+model Notification {
+  id          String             @id @default(cuid())
+  clinicId    String
+  kind        String
+  channel     String             @default("EMAIL")
+  recipient   String             @db.VarChar(255)
+  subject     String             @db.VarChar(255)
+  body        String             @db.Text
+  status      NotificationStatus @default(QUEUED)
+  attempts    Int                @default(0)
+  lastError   String?            @db.Text
+  relatedType String?
+  relatedId   String?
+  createdById String?
+  createdAt   DateTime           @default(now())
+  sentAt      DateTime?
+
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId, status, createdAt])
+  @@index([relatedType, relatedId])
+}
+
+enum DataRequestType {
+  DELETE
+  CORRECT
+}
+
+enum DataRequestStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
+
+model DataRequest {
+  id          String            @id @default(cuid())
+  clientId    String
+  type        DataRequestType
+  status      DataRequestStatus @default(OPEN)
+  requestedAt DateTime          @default(now())
+  resolvedAt  DateTime?
+  resolution  String?           @db.Text
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([clientId, type])
+  @@index([status, requestedAt])
+  @@index([clientId, requestedAt])
 }
 
 /**
  * ───────────────────────── audit ─────────────────────────
  */
+
+/// Failed sign-in counter per login identifier. Kept in the database so a
+/// restart or a second instance doesn't reset it, and keyed by identifier
+/// (not user id) so unknown accounts are throttled exactly like real ones.
+/// Fixed-window request counters (public forms, sign-in by address, portal
+/// messages). In the database so limits survive restarts and are shared by
+/// every instance. Expired rows are removed by the retention job.
+model RateLimitBucket {
+  key     String   @id @db.VarChar(191)
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
+}
+
+/// Sessions ended by signing out on one device. A signed-out token stays
+/// rejected until it would have expired anyway; then the row is cleaned up.
+model RevokedSession {
+  sid       String   @id @db.VarChar(64)
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model AuthThrottle {
+  key         String    @id
+  failures    Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+}
 
 model AuditLog {
   id         String   @id @default(cuid())
@@ -767,5 +891,6 @@ model AuditLog {
   actor  User?  @relation(fields: [actorId], references: [id])
 
   @@index([entityType, entityId])
+  @@index([clinicId, action, createdAt])
   @@index([clinicId, createdAt])
 }

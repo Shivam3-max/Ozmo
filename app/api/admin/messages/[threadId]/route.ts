@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession, canSeeHealthData } from "@/lib/auth";
+import { authorize } from "@/lib/auth";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
 const schema = z.object({ body: z.string().trim().min(1).max(4000) });
 
-export async function POST(req: Request, ctx: { params: Promise<{ threadId: string }> }) {
-  const session = await getSession();
-  if (!session || !canSeeHealthData(session.role)) {
-    return NextResponse.json({ error: "Not authorised." }, { status: 401 });
-  }
+export const POST = apiHandler(async function POST(req: Request, ctx: { params: Promise<{ threadId: string }> }) {
+  const session = await authorize("messages.reply");
 
   const { threadId } = await ctx.params;
   const parsed = schema.safeParse(await req.json().catch(() => null));
@@ -31,4 +29,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ threadId: stri
   });
 
   return NextResponse.json({ ok: true }, { status: 201 });
-}
+});

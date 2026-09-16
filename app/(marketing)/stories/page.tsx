@@ -21,7 +21,7 @@ export default function StoriesPage() {
 
       <Section backdrop="grid">
         <div className="max-w-[700px] rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-9">
-          <h2 className="text-[clamp(24px,3vw,30px)]">Stories coming soon</h2>
+          <h2 className="text-[clamp(24px,3vw,30px)]">Published only with consent</h2>
           <p className="mt-4 text-[16.5px] leading-relaxed text-[var(--ink-2)]">
             We&rsquo;re collecting journeys from clients who&rsquo;ve agreed to share them — with real
             numbers, not stock quotes. We won&rsquo;t publish anyone&rsquo;s story, photo or figures

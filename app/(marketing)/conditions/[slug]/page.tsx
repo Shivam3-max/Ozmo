@@ -20,7 +20,7 @@ export async function generateMetadata({
   const c = getCondition(slug);
   if (!c) return {};
   return {
-    title: c.metaTitle,
+    title: { absolute: c.metaTitle.includes("Ozmo") ? c.metaTitle : `${c.metaTitle} | Ozmo Diet Clinic` },
     description: c.metaDescription,
     alternates: { canonical: `/conditions/${c.slug}` },
   };

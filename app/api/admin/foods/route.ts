@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession, canEditPlans } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { authorize } from "@/lib/auth";
 import { foodSchema } from "@/lib/food-schema";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session || !canEditPlans(session.role)) {
-    return NextResponse.json({ error: "Not authorised." }, { status: 401 });
-  }
+export const POST = apiHandler(async function POST(req: Request) {
+  const session = await authorize("foods.edit");
 
   const parsed = foodSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
@@ -19,7 +16,7 @@ export async function POST(req: Request) {
   const d = parsed.data;
 
   const clash = await prisma.food.findFirst({
-    where: { clinicId: CLINIC_ID, name: { equals: d.name } },
+    where: { clinicId: session.clinicId, name: { equals: d.name } },
   });
   if (clash) {
     return NextResponse.json({ error: `"${d.name}" is already in the library.`, foodId: clash.id }, { status: 409 });
@@ -27,7 +24,7 @@ export async function POST(req: Request) {
 
   const food = await prisma.food.create({
     data: {
-      clinicId: CLINIC_ID,
+      clinicId: session.clinicId,
       ...d,
       glycemicTag: d.glycemicTag ?? null,
       // Anything the dietitian types herself is verified by definition.
@@ -37,10 +34,10 @@ export async function POST(req: Request) {
 
   await prisma.auditLog.create({
     data: {
-      clinicId: CLINIC_ID, actorId: session.sub, action: "FOOD_CREATED",
+      clinicId: session.clinicId, actorId: session.sub, action: "FOOD_CREATED",
       entityType: "Food", entityId: food.id, changes: { name: food.name },
     },
   });
 
   return NextResponse.json({ ok: true, foodId: food.id }, { status: 201 });
-}
+});

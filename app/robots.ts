@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { absoluteUrl } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -7,6 +8,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/portal/", "/admin/", "/api/", "/login", "/assessment/snapshot/"],
     },
-    sitemap: "https://ozmodietclinic.com/sitemap.xml",
+    sitemap: absoluteUrl("/sitemap.xml"),
   };
 }

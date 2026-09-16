@@ -1,23 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireStaff, canEditPlans } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { asStrings } from "@/lib/json";
 import { PageTitle, Panel } from "@/components/admin/ui";
 import FoodForm from "@/components/admin/FoodForm";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditFoodPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireStaff();
-  if (!canEditPlans(user.role)) {
+  if (!can(user.role, "foods.edit")) {
     return <Panel className="px-6 py-8"><p className="text-[15px] text-[var(--ink-2)]">Not part of your role&rsquo;s access.</p></Panel>;
   }
 
   const { id } = await params;
   const [food, usedInPlans] = await Promise.all([
-    prisma.food.findFirst({ where: { id, OR: [{ clinicId: CLINIC_ID }, { clinicId: null }] } }),
+    prisma.food.findFirst({ where: { id, clinicId: user.clinicId } }),
     prisma.planItem.count({ where: { foodId: id } }),
   ]);
   if (!food) notFound();

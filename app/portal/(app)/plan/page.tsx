@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { currentClient, sectionLines } from "@/lib/portal";
+import { CLINIC_TIME_ZONE } from "@/lib/clinic-time";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function PlanPage() {
       </h1>
       <p className="mt-1.5 text-[14px] text-[var(--ink-3)]">
         Version {plan.version} · updated{" "}
-        {(plan.publishedAt ?? plan.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
+        {(plan.publishedAt ?? plan.updatedAt).toLocaleDateString("en-IN", { timeZone: CLINIC_TIME_ZONE, day: "numeric", month: "long" })}
       </p>
 
       {everyDay && everyDay.slots.length > 0 && (

@@ -53,7 +53,7 @@ export default function PortalShell({
             </Link>
             <button
               onClick={async () => {
-                await fetch("/api/auth/logout", { method: "POST" });
+                await fetch("/api/auth/logout?scope=client", { method: "POST" });
                 router.push("/login");
                 router.refresh();
               }}
@@ -105,7 +105,7 @@ export default function PortalShell({
               return (
                 <Link key={t.href} href={t.href} className="flex items-center justify-center py-2">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-[#0F2E3D] shadow-[0_4px_14px_rgba(247,209,23,0.5)]">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true">
                       <path d={t.icon} />
                     </svg>
                   </span>
@@ -120,7 +120,7 @@ export default function PortalShell({
                   on ? "text-[var(--ink)]" : "text-[var(--ink-3)]"
                 }`}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d={t.icon} />
                 </svg>
                 {t.label}

@@ -4,7 +4,7 @@ import PageHero from "@/components/PageHero";
 import ContactForm from "@/components/ContactForm";
 
 export const metadata: Metadata = {
-  title: "Contact Ozmo Diet Clinic",
+  title: "Contact Us",
   description: "Visit, call or message Ozmo Diet Clinic. Book a consultation in the clinic or online.",
   alternates: { canonical: "/contact" },
 };
@@ -25,9 +25,9 @@ export default function ContactPage() {
       <Section backdrop="grid">
         <div className="grid gap-4 md:grid-cols-3">
           {[
-            { t: "Visit the clinic", b: "Clinic address and opening hours are being finalised for publication. Message us and we'll send you directions.", a: "" },
-            { t: "Call or WhatsApp", b: "The fastest way to reach us for anything time-sensitive. Contact number publishing shortly.", a: "" },
-            { t: "Email", b: "For programme enquiries, reports and billing. Address publishing shortly.", a: "" },
+            { t: "Visit the clinic", b: "Clinic visits are scheduled by appointment. Message us with your preferred time and we'll confirm directions before your visit.", a: "" },
+            { t: "Call or WhatsApp", b: "Use the contact form for now and the clinic team will reply within a working day with the right callback details.", a: "" },
+            { t: "Email", b: "For programme enquiries, reports and billing, send the form with your email address and we'll continue the conversation there.", a: "" },
           ].map((c) => (
             <Card key={c.t} hover>
               <h2 className="text-[21px]">{c.t}</h2>

@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { authorize } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
 const schema = z.object({ body: z.string().trim().min(1, "Write a message").max(4000) });
 
-export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session || session.role !== "CLIENT") {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+export const POST = apiHandler(async function POST(req: Request) {
+  const session = await authorize("portal.self");
 
-  const limit = rateLimit(`msg:${session.sub}:${clientIp(req.headers)}`, 30, 60 * 60 * 1000);
+  // Keyed on the signed-in client, which a spoofed header can't change.
+  const limit = await rateLimit(`msg:${session.sub}`, 30, 60 * 60 * 1000);
   if (!limit.ok) return NextResponse.json({ error: "That's a lot of messages. Try again shortly." }, { status: 429 });
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
@@ -38,4 +37,4 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json({ ok: true }, { status: 201 });
-}
+});

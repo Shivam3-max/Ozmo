@@ -1,21 +1,21 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff, canEditPlans } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { asArray } from "@/lib/json";
 import { PageTitle, Panel } from "@/components/admin/ui";
 import NewClientForm from "@/components/admin/NewClientForm";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewClientPage() {
   const user = await requireStaff();
-  if (!canEditPlans(user.role)) {
+  if (!can(user.role, "clients.create")) {
     return <Panel className="px-6 py-8"><p className="text-[15px] text-[var(--ink-2)]">Creating clients isn&rsquo;t part of your role&rsquo;s access.</p></Panel>;
   }
 
   const programs = await prisma.program.findMany({
-    where: { clinicId: CLINIC_ID, isActive: true },
+    where: { clinicId: user.clinicId, isActive: true },
     orderBy: { order: "asc" },
     select: { slug: true, name: true, durations: true },
   });

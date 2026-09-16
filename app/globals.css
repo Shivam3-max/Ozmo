@@ -10,8 +10,8 @@
   --color-slate: #4E6672;
   --color-line: #DCE6EA;
 
-  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
-  --font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), "Bricolage Grotesque", system-ui, sans-serif;
+  --font-sans: var(--font-public-sans), "Public Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 :root {
@@ -24,7 +24,9 @@
   --tint: #F4F8F9;
   --ink: #0F2E3D;
   --ink-2: #4E6672;
-  --ink-3: #7D939D;
+  /* Quietest text colour. 4.58:1 on --line-soft and higher on white and --tint,
+     so labels and helper text meet WCAG AA (4.5:1). Don't lighten it. */
+  --ink-3: #5B717B;
   --line: #DCE6EA;
   --line-soft: #EDF3F5;
   --accent: #F7D117;
@@ -41,10 +43,14 @@
 @layer base {
   * { box-sizing: border-box; }
 
-  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  /* Keeps anchored and focused elements clear of the sticky site header. */
+  html { scroll-behavior: smooth; scroll-padding-top: 88px; -webkit-text-size-adjust: 100%; }
 
   body {
     margin: 0;
+    /* People paste long URLs and unbroken strings into notes and messages; break
+       them rather than letting one word widen the page. Doesn't affect words that fit. */
+    overflow-wrap: break-word;
     background: var(--ground);
     color: var(--ink);
     font-family: var(--font-sans);
@@ -52,6 +58,10 @@
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
+
+  /* Text blocks may shrink below their longest word (grid and flex tracks size to
+     it otherwise). Table cells are left out so wide tables scroll instead of squashing. */
+  p, li, dd, dt, blockquote, h1, h2, h3, h4, label { overflow-wrap: anywhere; }
 
   h1, h2, h3, h4, h5 {
     font-family: var(--font-display);
@@ -198,7 +208,7 @@
   }
 
   .hero-hand {
-    font-family: Caveat, "Segoe Script", cursive;
+    font-family: var(--font-caveat), Caveat, "Segoe Script", cursive;
     font-size: 21px;
     line-height: 1.35;
   }

@@ -1,41 +1,54 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { requireStaff, canSeeHealthData } from "@/lib/auth";
-import { CLINIC_ID } from "@/lib/leads";
+import { requireStaff } from "@/lib/auth";
 import { asStrings } from "@/lib/json";
 import { PageTitle, Panel, StageTag, Flag, Empty, th, td, timeAgo } from "@/components/admin/ui";
+import { formatPhone } from "@/lib/phone";
+import { pageFrom, pageInfo, paging } from "@/lib/pagination";
+import Pager from "@/components/admin/Pager";
+import type { Prisma } from "@prisma/client";
+import { can } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 50;
 
 const STAGES = ["ALL", "NEW", "CONTACTED", "CONSULTATION_BOOKED", "CONSULTED", "CONVERTED", "LOST"] as const;
 
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ stage?: string; q?: string }>;
+  searchParams: Promise<{ stage?: string; q?: string; page?: string }>;
 }) {
   const user = await requireStaff();
-  const showHealth = canSeeHealthData(user.role);
-  const { stage = "ALL", q = "" } = await searchParams;
+  const showHealth = can(user.role, "health.read");
+  const { stage = "ALL", q = "", page: rawPage } = await searchParams;
+  const page = pageFrom(rawPage);
 
-  const leads = await prisma.lead.findMany({
-    where: {
-      clinicId: CLINIC_ID,
+  // Phones are stored as +919888877777, so match typed numbers on digits alone.
+  const digits = q.replace(/\D/g, "");
+  const where: Prisma.LeadWhereInput = {
+      clinicId: user.clinicId,
       ...(stage !== "ALL" && STAGES.includes(stage as (typeof STAGES)[number])
         ? { stage: stage as "NEW" }
         : {}),
       ...(q
-        ? { OR: [{ name: { contains: q } }, { phone: { contains: q } }, { email: { contains: q } }] }
+        ? { OR: [{ name: { contains: q } }, { phone: { contains: digits.length >= 4 ? digits : q } }, { email: { contains: q } }] }
         : {}),
-    },
+  };
+  const [total, leads] = await Promise.all([
+    prisma.lead.count({ where }),
+    prisma.lead.findMany({
+    where,
     orderBy: [{ score: "desc" }, { createdAt: "desc" }],
-    take: 200,
+    ...paging(page, PAGE_SIZE),
     include: { assessment: { select: { token: true, bmi: true } } },
-  });
+  }),
+  ]);
 
   const counts = await prisma.lead.groupBy({
     by: ["stage"],
-    where: { clinicId: CLINIC_ID },
+    where: { clinicId: user.clinicId },
     _count: true,
   });
   const countFor = (s: string) =>
@@ -99,9 +112,9 @@ export default async function LeadsPage({
                 <tr>
                   <th className={th}>Name</th>
                   <th className={th}>Contact</th>
-                  <th className={th}>Goal</th>
+                  {showHealth && <th className={th}>Goal</th>}
                   {showHealth && <th className={th}>Conditions</th>}
-                  <th className={th}>Score</th>
+                  {showHealth && <th className={th}>Score</th>}
                   <th className={th}>Stage</th>
                   <th className={th}>Added</th>
                 </tr>
@@ -121,16 +134,16 @@ export default async function LeadsPage({
                         </span>
                       </td>
                       <td className={`${td} text-[var(--ink-2)]`}>
-                        <span className="tabular block">{l.phone}</span>
+                        <span className="tabular block">{formatPhone(l.phone)}</span>
                         {l.email && <span className="block text-[12.5px] text-[var(--ink-3)]">{l.email}</span>}
                       </td>
-                      <td className={`${td} text-[var(--ink-2)]`}>{l.goal ?? "—"}</td>
+                      {showHealth && <td className={`${td} text-[var(--ink-2)]`}>{l.goal ?? "—"}</td>}
                       {showHealth && (
                         <td className={`${td} text-[var(--ink-2)]`}>
                           {conditions.length ? conditions.join(", ") : "—"}
                         </td>
                       )}
-                      <td className={`${td} tabular font-semibold`}>{l.score}</td>
+                      {showHealth && <td className={`${td} tabular font-semibold`}>{l.score}</td>}
                       <td className={td}>
                         <StageTag stage={l.stage} />
                       </td>
@@ -143,6 +156,7 @@ export default async function LeadsPage({
           </div>
         )}
       </Panel>
+      <Pager info={pageInfo(page, PAGE_SIZE, total)} base="/admin/leads" params={{ stage: stage !== "ALL" ? stage : undefined, q: q || undefined }} noun="leads" />
     </>
   );
 }

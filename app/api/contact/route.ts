@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
+import { CLINIC_ID } from "@/lib/clinic";
 import { prisma } from "@/lib/db";
+import { reportError } from "@/lib/observability";
 import { contactSchema, fieldErrors } from "@/lib/validation";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
-import { CLINIC_ID, notifyClinic } from "@/lib/leads";
+import { limitByIp } from "@/lib/rate-limit";
+import { afterEnquiry } from "@/lib/notifications/public-forms";
+import { apiHandler } from "@/lib/api";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
-  const ip = clientIp(req.headers);
-  const limit = rateLimit(`contact:${ip}`, 5, 60 * 60 * 1000);
+export const POST = apiHandler(async function POST(req: Request) {
+  const limit = await limitByIp(req.headers, "contact", 5, 60 * 60 * 1000);
   if (!limit.ok) {
     return NextResponse.json(
       { error: "Too many messages. Please try again shortly." },
@@ -40,10 +42,10 @@ export async function POST(req: Request) {
         message: c.message,
       },
     });
-    await notifyClinic(`New enquiry — ${c.topic}`, `${c.name} · ${c.phone}\n\n${c.message}`);
+    await afterEnquiry(c.topic);
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
-    console.error("[ozmo] contact save failed", err);
+    await reportError(err, { source: "api", method: "POST", path: "/api/contact" });
     return NextResponse.json({ error: "We couldn't send that. Please try again." }, { status: 500 });
   }
-}
+});

@@ -32,13 +32,15 @@ export default function VerifyToggle({ id, verified }: { id: string; verified: b
         setBusy(false);
       }}
       title={on ? "Verified — click to unverify" : "Mark as verified"}
+      aria-label="Verified"
+      aria-pressed={on}
       className={`inline-flex h-6 w-6 items-center justify-center rounded-full border transition-colors ${
         on
           ? "border-[var(--good)] bg-[var(--good)] text-white"
           : "border-[var(--line)] text-transparent hover:border-[var(--good)]"
       } ${busy ? "opacity-50" : ""}`}
     >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M20 6 9 17l-5-5" />
       </svg>
     </button>

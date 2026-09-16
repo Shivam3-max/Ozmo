@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
-import { currentClient, ozmoScore, currentStreak, BAND_COPY, startOfDay, dayKey } from "@/lib/portal";
+import { currentClient, ozmoScore, currentStreak, BAND_COPY } from "@/lib/portal";
+import { addDays, clinicDay, dayKey } from "@/lib/clinic-time";
 import WeightChart from "@/components/portal/WeightChart";
 
 export const dynamic = "force-dynamic";
@@ -10,9 +11,10 @@ export default async function ProgressPage() {
   const client = await currentClient();
   if (!client) return null;
 
-  const since = startOfDay(new Date(Date.now() - 83 * 864e5));
+  const today = clinicDay();
+  const since = addDays(today, -83);
   const [score, streak, measurements, logs] = await Promise.all([
-    ozmoScore(client.id),
+    ozmoScore(client.id, client.enrollments[0]?.startDate ?? client.joinedAt),
     currentStreak(client.id),
     prisma.measurement.findMany({ where: { clientId: client.id, weightKg: { not: null } }, orderBy: { date: "asc" }, take: 200 }),
     prisma.foodLog.findMany({ where: { clientId: client.id, date: { gte: since } }, select: { date: true } }),
@@ -23,7 +25,7 @@ export default async function ProgressPage() {
 
   // 12 weeks of activity, oldest first
   const cells = Array.from({ length: 84 }, (_, i) => {
-    const d = startOfDay(new Date(Date.now() - (83 - i) * 864e5));
+    const d = addDays(since, i);
     return { key: dayKey(d), on: loggedDays.has(dayKey(d)) };
   });
 
@@ -47,8 +49,10 @@ export default async function ProgressPage() {
         </div>
 
         <div className="rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-5">
-          <p className="text-[13px] font-bold uppercase tracking-[0.1em] text-[var(--ink-3)]">How it's made up</p>
-          <p className="mt-1.5 text-[13.5px] text-[var(--ink-3)]">Rolling 7 days. No hidden maths.</p>
+          <p className="text-[13px] font-bold uppercase tracking-[0.1em] text-[var(--ink-3)]">How it&rsquo;s made up</p>
+          <p className="mt-1.5 text-[13.5px] text-[var(--ink-3)]">
+            {score.days < 7 ? `Your first ${score.days} ${score.days === 1 ? "day" : "days"} — it grows to a rolling 7.` : "Rolling 7 days."} No hidden maths.
+          </p>
           <div className="mt-4 grid gap-3.5">
             {score.parts.map((p) => (
               <div key={p.label}>
