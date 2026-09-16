@@ -18,17 +18,36 @@ export type ErrorReport = {
   digest?: string;
 };
 
-type ErrorShape = Error & { code?: string; digest?: string; meta?: Record<string, unknown> };
+type ErrorShape = Error & { code?: string; errorCode?: string; digest?: string; meta?: Record<string, unknown> };
 
 export function errorFingerprint(err: unknown) {
   if (!(err instanceof Error)) return { name: typeof err };
   const e = err as ErrorShape;
   return {
     name: e.name,
-    ...(e.code ? { code: e.code } : {}),
+    // Prisma reports connection problems (P1000 wrong password, P1001 unreachable,
+    // P1003 no such database) on errorCode rather than code.
+    ...(e.code || e.errorCode ? { code: e.code ?? e.errorCode } : {}),
     ...(typeof e.meta?.column_name === "string" ? { column: e.meta.column_name } : {}),
     ...(typeof e.meta?.modelName === "string" ? { model: e.meta.modelName } : {}),
   };
+}
+
+/**
+ * Why a database connection failed, in words that point at the setting to fix.
+ * Prisma puts the detail in the message, which is never logged (it can quote the
+ * connection), so only these fixed phrases are used.
+ */
+export function databaseFailureReason(err: unknown): string | undefined {
+  const message = err instanceof Error ? err.message : "";
+  if (/Unknown database|database .* does not exist/i.test(message)) return "no such database — check DB_NAME";
+  if (/Access denied[\s\S]*to database/i.test(message)) return "that user cannot open that database — check DB_NAME, and that the user is granted access to it";
+  if (/Authentication failed|Access denied/i.test(message)) return "authentication failed — check DB_USER and DB_PASSWORD";
+  if (/Can't reach database server|ECONNREFUSED|connection refused/i.test(message)) return "cannot reach the server — check DB_HOST and DB_PORT, and that MySQL is running";
+  if (/timed out|ETIMEDOUT/i.test(message)) return "connection timed out — check DB_HOST, DB_PORT and any firewall";
+  if (/Environment variable not found|DATABASE_URL/i.test(message)) return "no connection details — set DB_NAME, DB_USER and DB_PASSWORD";
+  if (/too many connections|connection limit/i.test(message)) return "too many connections — lower DB_CONNECTION_LIMIT";
+  return undefined;
 }
 
 /** Strips query strings and one-time tokens (setup links, snapshots) from a path before it's logged or sent anywhere. */
