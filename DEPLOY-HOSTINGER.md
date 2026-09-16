@@ -31,9 +31,15 @@ precedence over the fields above.
 1. In **Websites**, choose **Add website → Deploy Web App** and connect the
    private GitHub repository.
 2. Select **Next.js** and **Node.js 22**.
-3. Use `npm ci` as the install command, `npm run hostinger:build` as the build
-   command, and `npm run start` as the start command. The production start
-   script listens on port 3000, as required by Hostinger's web-app runtime.
+3. Use `npm ci` as the install command, `npm run build` as the build command
+   (hPanel offers no other), and `npm run start` as the start command. The
+   production start script listens on port 3000, as required by Hostinger's
+   web-app runtime.
+
+   `npm run build` first runs `scripts/prepare-deploy.mjs`, which checks the
+   environment, applies database migrations and — while the `SEED_*` passwords
+   are set — creates the first two staff accounts. Any failure stops the build,
+   so a broken configuration never replaces a working deployment.
 4. Add `DB_NAME`, `DB_USER` and `DB_PASSWORD` from step 1, a randomly generated
    `AUTH_SECRET` of at least 32 bytes, and
    `NEXT_PUBLIC_SITE_URL=https://ozmodietclinic.com` in hPanel. The site URL
@@ -56,10 +62,10 @@ precedence over the fields above.
    `lib/retention.ts` are defaults the clinic's legal adviser must confirm;
    client health records are only removed on a deletion request.
 7. For the first deployment only, add distinct strong `SEED_ADMIN_PASSWORD` and
-   `SEED_DIETITIAN_PASSWORD` values and use `npm run hostinger:init` as the build
-   command. Verify both accounts, remove the seed-password variables, restore
-   the build command to `npm run hostinger:build`, and redeploy. Production seed
-   passwords are never printed to the build log.
+   `SEED_DIETITIAN_PASSWORD` values. The build creates both staff accounts. Sign
+   in as each, then delete those two variables and deploy again — later builds
+   skip that step and say so. Production seed passwords are never printed to the
+   build log.
 8. Run the smoke test from any computer with Node.js and this repository:
    `npm run smoke -- https://ozmodietclinic.com`. It is read-only and checks
    health, HTTPS, security headers, robots and sitemap, sign-in redirects and
@@ -70,10 +76,9 @@ precedence over the fields above.
 9. Confirm `https://DOMAIN/api/health` returns `{ "status": "ok" }` and verify
    admin, portal, assessment, booking, export and logout flows.
 
-The build command first runs `npm run validate:env`, then applies committed
-migrations before compiling. Missing secrets, non-HTTPS public URLs, weak seed
-passwords or incomplete database fields stop deployment before the database is
-touched.
+Missing secrets, non-HTTPS public URLs, weak seed passwords, placeholder values
+left in from `.env.example` or incomplete database fields stop the deployment
+before anything is built.
 
 ## 3. Backups and restore testing
 

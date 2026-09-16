@@ -59,15 +59,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
-      - run: npm run validate:env
-      - run: npm run db:deploy
-      - name: Migrations match the schema
-        run: node scripts/with-db.mjs npx prisma migrate diff --from-url '$DATABASE_URL' --to-schema-datamodel prisma/schema.prisma --exit-code
+      # `npm run build` below validates the environment, migrates and seeds (scripts/prepare-deploy.mjs).
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run db:seed
+      - name: Migrations match the schema
+        run: node scripts/with-db.mjs npx prisma migrate diff --from-url '$DATABASE_URL' --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Start mail sink
         run: node scripts/regression/smtp-sink.mjs &
       - run: npx playwright install --with-deps chromium
