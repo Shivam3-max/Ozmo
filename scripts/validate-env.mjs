@@ -12,6 +12,14 @@ function fail(message) {
   errors.push(message);
 }
 
+// The .env template ships with obvious placeholders; a deploy must not start with them.
+const PLACEHOLDER = /^(REPLACE_ME|CHANGE_ME|replace-with-|generate-a-|generate-another-|your-)/i;
+for (const [name, value] of Object.entries(process.env)) {
+  if (typeof value === "string" && PLACEHOLDER.test(value.trim())) {
+    fail(`${name} still holds the placeholder from .env.example — set the real value.`);
+  }
+}
+
 let connectionUrl = null;
 try {
   connectionUrl = buildDatabaseUrl();
