@@ -105,8 +105,9 @@ if (errorWebhook) {
 const smtpHost = process.env.SMTP_HOST?.trim();
 const emailFrom = process.env.EMAIL_FROM?.trim();
 if (smtpHost || emailFrom) {
-  if (!smtpHost) fail("SMTP_HOST is required when EMAIL_FROM is set.");
-  if (!emailFrom) fail("EMAIL_FROM is required when SMTP_HOST is set.");
+  // Half-configured email is worse than none: it looks set up and silently sends nothing.
+  if (!smtpHost) fail("EMAIL_FROM is set but SMTP_HOST is not — add SMTP_HOST (and SMTP_USER/SMTP_PASSWORD), or remove EMAIL_FROM to leave email switched off.");
+  if (!emailFrom) fail("SMTP_HOST is set but EMAIL_FROM is not — add EMAIL_FROM, or remove SMTP_HOST to leave email switched off.");
   const port = Number(process.env.SMTP_PORT ?? 465);
   if (!Number.isInteger(port) || port < 1 || port > 65535) fail("SMTP_PORT must be a port number (usually 465 or 587).");
   if (process.env.SMTP_USER && !process.env.SMTP_PASSWORD) fail("SMTP_PASSWORD is required when SMTP_USER is set.");
