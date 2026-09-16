@@ -12,11 +12,25 @@ function fail(message) {
   errors.push(message);
 }
 
-// The .env template ships with obvious placeholders; a deploy must not start with them.
+// The .env template ships with obvious placeholders; a deploy must not start with
+// them. Only this application's own settings are checked, so an unrelated variable
+// in a hosting panel can't fail the build.
+const OURS = [
+  "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT", "DB_CONNECTION_LIMIT", "DB_POOL_TIMEOUT",
+  "DATABASE_URL", "AUTH_SECRET", "NEXT_PUBLIC_SITE_URL", "TRUSTED_PROXY_COUNT", "ERROR_WEBHOOK_URL",
+  "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_FROM", "CLINIC_NOTIFY_EMAIL",
+  "DOCUMENT_ENCRYPTION_KEY", "SEED_ADMIN_EMAIL", "SEED_ADMIN_PASSWORD", "SEED_DIETITIAN_EMAIL", "SEED_DIETITIAN_PASSWORD",
+];
+const OPTIONAL = new Set(["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_FROM", "CLINIC_NOTIFY_EMAIL", "ERROR_WEBHOOK_URL", "DOCUMENT_ENCRYPTION_KEY", "SEED_ADMIN_PASSWORD", "SEED_DIETITIAN_PASSWORD"]);
 const PLACEHOLDER = /^(REPLACE_ME|CHANGE_ME|replace-with-|generate-a-|generate-another-|your-)/i;
-for (const [name, value] of Object.entries(process.env)) {
+for (const name of OURS) {
+  const value = process.env[name];
   if (typeof value === "string" && PLACEHOLDER.test(value.trim())) {
-    fail(`${name} still holds the placeholder from .env.example — set the real value.`);
+    fail(
+      OPTIONAL.has(name)
+        ? `${name} still holds a placeholder — set the real value, or remove the variable entirely if you aren't using it yet.`
+        : `${name} still holds a placeholder — set the real value.`
+    );
   }
 }
 
