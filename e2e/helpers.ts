@@ -1,7 +1,7 @@
 import { expect, type APIRequestContext } from "@playwright/test";
 
 if (process.env.E2E_ALLOW_DB_WRITES !== "1") {
-  throw new Error("E2E tests write to the database. Set E2E_ALLOW_DB_WRITES=1 and point DATABASE_URL at a disposable test database.");
+  throw new Error("E2E tests write to the database. Set E2E_ALLOW_DB_WRITES=1 and point the DB_* settings (or DATABASE_URL) at a disposable test database.");
 }
 
 export const env = (name: string) => {

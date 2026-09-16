@@ -57,6 +57,9 @@ disposable database (`E2E_ALLOW_DB_WRITES=1` is required).
   the administrator with a preview of what is erased and what is kept.
 - **Retention:** weekly job (`npm run retention:run`) with periods defined in
   `lib/retention.ts`; the privacy policy reads the same values.
+- **Configuration:** database details are separate fields copied from hPanel, assembled
+  (and escaped) by the app, so a password containing `@` or `#` can't silently break
+  the connection. A full `DATABASE_URL` still works where one is preferred.
 - **Operations:** `/api/health` checks the database; every server error is one JSON
   log line and an optional webhook alert; the deploy build refuses unsafe
   configuration (`npm run validate:env`).
@@ -112,6 +115,7 @@ These need the clinic owner, the hosting account or a legal adviser:
 |---|---|
 | Deploy, backups, rollback | `DEPLOY-HOSTINGER.md` |
 | Environment variables | `.env.example`, checked by `scripts/validate-env.mjs` |
+| Database connection (DB_NAME/DB_USER/DB_PASSWORD, host and port optional) | `lib/database-url.mjs` |
 | Permissions | `lib/policy.ts` |
 | Retention periods | `lib/retention.ts` |
 | Regression suite | `scripts/regression/` |

@@ -6,7 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
  *   npm run build && npm run test:e2e
  *
  * They write to the database (leads, clients, staff, plans), so they refuse to
- * run unless E2E_ALLOW_DB_WRITES=1 — point DATABASE_URL at a disposable test
+ * run unless E2E_ALLOW_DB_WRITES=1 — point the DB_* settings at a disposable test
  * database, never production. Staff credentials come from the E2E_* variables
  * (the accounts created by `npm run db:seed`).
  */

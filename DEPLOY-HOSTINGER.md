@@ -9,9 +9,22 @@ In hPanel, create a new MySQL database and a dedicated database user. Grant that
 user access only to the Ozmo database. Do not enable Remote MySQL unless a
 specific, temporary administrative connection requires it.
 
-Use a URL in this form (percent-encode special password characters):
+Note the database name, user and password shown in **Databases → Management**.
+They go in as separate environment variables in step 4 — no connection string to
+assemble, and no characters to escape:
 
-`mysql://USER:PASSWORD@localhost:3306/DATABASE?connection_limit=5&pool_timeout=10`
+| Variable | Value |
+| --- | --- |
+| `DB_NAME` | database name (e.g. `u123456789_ozmo`) |
+| `DB_USER` | database user |
+| `DB_PASSWORD` | database password |
+| `DB_HOST` | `localhost` (optional; this is the default) |
+| `DB_PORT` | `3306` (optional; this is the default) |
+
+The app adds the shared-hosting pool limits itself (`DB_CONNECTION_LIMIT`,
+default 5, and `DB_POOL_TIMEOUT`, default 10 seconds). Set `DATABASE_URL`
+instead only if you specifically need a full connection string; it then takes
+precedence over the fields above.
 
 ## 2. Deploy the Node.js application
 
@@ -21,8 +34,9 @@ Use a URL in this form (percent-encode special password characters):
 3. Use `npm ci` as the install command, `npm run hostinger:build` as the build
    command, and `npm run start` as the start command. The production start
    script listens on port 3000, as required by Hostinger's web-app runtime.
-4. Add `DATABASE_URL`, a randomly generated `AUTH_SECRET` of at least 32 bytes,
-   and `NEXT_PUBLIC_SITE_URL=https://ozmodietclinic.com` in hPanel. The site URL
+4. Add `DB_NAME`, `DB_USER` and `DB_PASSWORD` from step 1, a randomly generated
+   `AUTH_SECRET` of at least 32 bytes, and
+   `NEXT_PUBLIC_SITE_URL=https://ozmodietclinic.com` in hPanel. The site URL
    must be the final HTTPS domain with no trailing slash; it is used for metadata,
    sitemap and robots output. Never upload a production `.env` file or place
    secrets in GitHub variables visible to logs.
@@ -58,8 +72,8 @@ Use a URL in this form (percent-encode special password characters):
 
 The build command first runs `npm run validate:env`, then applies committed
 migrations before compiling. Missing secrets, non-HTTPS public URLs, weak seed
-passwords or a MySQL URL without shared-hosting pool limits stop deployment
-before the database is touched.
+passwords or incomplete database fields stop deployment before the database is
+touched.
 
 ## 3. Backups and restore testing
 
@@ -77,8 +91,9 @@ Hostinger Business provides managed database/file backups. In hPanel:
    # a command-line dump must skip GTIDs, or the restore fails on MySQL 8+
    mysqldump --single-transaction --set-gtid-purged=OFF --hex-blob --default-character-set=utf8mb4 -u USER -p PROD_DB > backup.sql
    mysql --default-character-set=utf8mb4 -u USER -p ozmo_restore_test < backup.sql
-   SOURCE_DATABASE_URL="mysql://…/PROD_DB" RESTORED_DATABASE_URL="mysql://…/ozmo_restore_test" npm run restore:check
-   DATABASE_URL="mysql://…/ozmo_restore_test" npx prisma migrate status
+   # these two take full connection strings, so the restore copy can be compared with production
+   SOURCE_DATABASE_URL="mysql://USER:PASSWORD@localhost:3306/PROD_DB" RESTORED_DATABASE_URL="mysql://USER:PASSWORD@localhost:3306/ozmo_restore_test" npm run restore:check
+   DB_NAME=ozmo_restore_test npm run db:status
    ```
 
    `restore:check` is read-only; it compares every table's row count and the
@@ -132,5 +147,5 @@ previous application commit runs against the newer schema. Before a migration,
 take an on-demand database backup. If a release fails before migration, redeploy
 the previous Git commit. If a migration has applied, do not edit or delete its
 row manually: restore the pre-release database backup into a separate database,
-verify it, point `DATABASE_URL` to the verified restore, and redeploy the previous
+verify it, point `DB_NAME` at the verified restore, and redeploy the previous
 application commit.

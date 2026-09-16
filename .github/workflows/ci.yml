@@ -22,7 +22,12 @@ jobs:
           --health-cmd="mysqladmin ping -h 127.0.0.1 -u root --password=root_test_password"
           --health-interval=10s --health-timeout=5s --health-retries=10
     env:
-      DATABASE_URL: mysql://ozmo:ozmo_test_password@127.0.0.1:3306/ozmo_test?connection_limit=5&pool_timeout=10
+      # The same separate fields production uses, so that path is exercised in CI.
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_NAME: ozmo_test
+      DB_USER: ozmo
+      DB_PASSWORD: ozmo_test_password
       AUTH_SECRET: ci-only-secret-at-least-32-characters-long
       NEXT_PUBLIC_SITE_URL: https://example.test
       ERROR_WEBHOOK_URL: https://hooks.example.test/ci-not-used
@@ -55,9 +60,9 @@ jobs:
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run validate:env
-      - run: npx prisma migrate deploy
+      - run: npm run db:deploy
       - name: Migrations match the schema
-        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+        run: node scripts/with-db.mjs npx prisma migrate diff --from-url '$DATABASE_URL' --to-schema-datamodel prisma/schema.prisma --exit-code
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

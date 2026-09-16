@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/db.ts";
 import { programs } from "../lib/programs.ts";
 import { CLINIC_ID } from "../lib/clinic.ts";
 import { FOODS } from "./food-seed.ts";
@@ -9,7 +9,6 @@ import { PRACTICE_LIBRARY } from "./practice-library.ts";
 import { PLAN_TEMPLATES } from "./plan-templates.ts";
 import { generateTemplates } from "./templates/generate.ts";
 
-const prisma = new PrismaClient();
 const isProduction = process.env.NODE_ENV === "production";
 
 function bootstrapPassword(name: "SEED_ADMIN_PASSWORD" | "SEED_DIETITIAN_PASSWORD") {

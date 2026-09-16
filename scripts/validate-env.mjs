@@ -1,8 +1,8 @@
 import "dotenv/config";
+import { databaseUrl as buildDatabaseUrl, describeDatabase, usingDatabaseFields } from "../lib/database-url.mjs";
 
 const errors = [];
 
-const databaseUrl = process.env.DATABASE_URL?.trim();
 const authSecret = process.env.AUTH_SECRET?.trim();
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 const adminPassword = process.env.SEED_ADMIN_PASSWORD;
@@ -12,19 +12,26 @@ function fail(message) {
   errors.push(message);
 }
 
-if (!databaseUrl) {
-  fail("DATABASE_URL is required.");
-} else {
+let connectionUrl = null;
+try {
+  connectionUrl = buildDatabaseUrl();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+
+if (connectionUrl) {
   try {
-    const parsed = new URL(databaseUrl);
-    if (parsed.protocol !== "mysql:") fail("DATABASE_URL must use the mysql:// scheme.");
-    if (!parsed.username) fail("DATABASE_URL must include a database user.");
-    if (!parsed.password) fail("DATABASE_URL must include a database password.");
-    if (!parsed.pathname || parsed.pathname === "/") fail("DATABASE_URL must include a database name.");
-    if (!parsed.searchParams.has("connection_limit")) fail("DATABASE_URL must set connection_limit for shared hosting.");
-    if (!parsed.searchParams.has("pool_timeout")) fail("DATABASE_URL must set pool_timeout for shared hosting.");
+    const parsed = new URL(connectionUrl);
+    if (parsed.protocol !== "mysql:") fail("The database connection must use MySQL.");
+    if (!parsed.username) fail("DB_USER is required.");
+    if (!parsed.password) fail("DB_PASSWORD is required.");
+    if (!parsed.pathname || parsed.pathname === "/") fail("DB_NAME is required.");
+    if (!parsed.searchParams.has("connection_limit")) fail("connection_limit is missing (set DB_CONNECTION_LIMIT).");
+    if (!parsed.searchParams.has("pool_timeout")) fail("pool_timeout is missing (set DB_POOL_TIMEOUT).");
+    if (usingDatabaseFields()) console.log(`Database: ${describeDatabase()} (from DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD)`);
+    else console.warn("Warning: DATABASE_URL is set, so the DB_* fields are ignored.");
   } catch {
-    fail("DATABASE_URL is not a valid URL.");
+    fail("The database connection details are not valid.");
   }
 }
 

@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 import { PrismaClient } from "@prisma/client";
+import { databaseUrl } from "../../lib/database-url.mjs";
 
 if (process.env.E2E_ALLOW_DB_WRITES !== "1") {
   console.error("Refusing to run: this suite writes to the database. Set E2E_ALLOW_DB_WRITES=1 against a disposable database.");
@@ -24,7 +25,7 @@ const need = (name) => {
 const B = process.env.REGRESSION_BASE_URL ?? "http://localhost:3681";
 const INBOX = process.env.REGRESSION_CLINIC_INBOX ?? "clinic-inbox@example.test";
 const TIMING_TOLERANCE_MS = Number(process.env.TIMING_TOLERANCE_MS ?? 150);
-const db = new PrismaClient();
+const db = new PrismaClient({ datasourceUrl: databaseUrl() });
 const SMTP_LOG = need("SMTP_LOG");
 const ADMIN = { email: need("E2E_ADMIN_EMAIL"), password: need("E2E_ADMIN_PASSWORD") };
 const DIET = { email: need("E2E_DIETITIAN_EMAIL"), password: need("E2E_DIETITIAN_PASSWORD") };
