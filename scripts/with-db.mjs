@@ -8,6 +8,8 @@
 // variable (prisma migrate diff --from-url '$DATABASE_URL').
 //
 // The URL itself is never printed: it contains the database password.
+// Loads .env the same way Next.js and the env validator do, so local runs work too.
+import "dotenv/config";
 import { spawnSync } from "node:child_process";
 import { databaseUrl, describeDatabase } from "../lib/database-url.mjs";
 
